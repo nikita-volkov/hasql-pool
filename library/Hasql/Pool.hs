@@ -9,7 +9,6 @@ where
 
 import Hasql.Pool.Prelude
 import qualified Hasql.Connection
-import qualified Hasql.Settings
 import qualified Data.Pool
 
 
@@ -21,7 +20,7 @@ newtype Pool =
 -- |
 -- Given the pool-size, timeout and connection settings
 -- create a connection-pool.
-acquire :: Int -> NominalDiffTime -> Hasql.Settings.Settings -> IO Pool
+acquire :: Int -> NominalDiffTime -> Hasql.Connection.Settings -> IO Pool
 acquire size timeout connectionSettings =
   fmap Pool $
   Data.Pool.createPool acquire release stripes timeout size

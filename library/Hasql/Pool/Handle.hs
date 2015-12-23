@@ -14,7 +14,6 @@ import Hasql.Pool.Prelude hiding (Handle)
 import qualified Hasql.Pool
 import qualified Hasql.Connection
 import qualified Hasql.Session
-import qualified Hasql.Settings
 
 
 -- |
@@ -26,7 +25,7 @@ newtype Handle s =
 -- Given the pool-size, timeout and connection settings
 -- executes an IO function on a temporary handle,
 -- releasing it automatically afterwards.
-with :: Int -> NominalDiffTime -> Hasql.Settings.Settings -> (forall s. Handle s -> IO a) -> IO a
+with :: Int -> NominalDiffTime -> Hasql.Connection.Settings -> (forall s. Handle s -> IO a) -> IO a
 with size timeout settings handler =
   acquire >>= \pool -> use pool <* release pool
   where
