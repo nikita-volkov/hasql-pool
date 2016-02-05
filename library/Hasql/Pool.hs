@@ -17,11 +17,14 @@ import qualified Data.Pool
 newtype Pool =
   Pool (Data.Pool.Pool (Either Hasql.Connection.ConnectionError Hasql.Connection.Connection))
 
+type Settings =
+  (Int, NominalDiffTime, Hasql.Connection.Settings)
+
 -- |
 -- Given the pool-size, timeout and connection settings
 -- create a connection-pool.
-acquire :: Int -> NominalDiffTime -> Hasql.Connection.Settings -> IO Pool
-acquire size timeout connectionSettings =
+acquire :: Settings -> IO Pool
+acquire (size, timeout, connectionSettings) =
   fmap Pool $
   Data.Pool.createPool acquire release stripes timeout size
   where
