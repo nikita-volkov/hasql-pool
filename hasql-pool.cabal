@@ -45,7 +45,6 @@ library
     Hasql.Pool.Prelude
   exposed-modules:
     Hasql.Pool
-    Hasql.Pool.Handle
   build-depends:
     -- resources:
     resource-pool >= 0.2 && < 0.3,
