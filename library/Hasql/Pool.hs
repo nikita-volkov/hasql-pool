@@ -4,6 +4,7 @@ module Hasql.Pool
   Settings(..),
   acquire,
   release,
+  UsageError(..),
   use,
 )
 where
@@ -43,13 +44,18 @@ release :: Pool -> IO ()
 release (Pool pool) =
   Data.Pool.destroyAllResources pool
 
+data UsageError =
+  ConnectionError !Hasql.Connection.ConnectionError |
+  SessionError !Hasql.Session.Error
+  deriving (Show, Eq, Ord)
+
 -- |
 -- Use a connection from the pool to run a session and
 -- and return the connection to the pool, when finished.
 -- Exception-safe.
-use :: Pool -> Hasql.Session.Session a -> IO (Either (Either Hasql.Connection.ConnectionError Hasql.Session.Error) a)
+use :: Pool -> Hasql.Session.Session a -> IO (Either UsageError a)
 use (Pool pool) session =
-  fmap (either (Left . Left) (either (Left . Right) Right)) $
+  fmap (either (Left . ConnectionError) (either (Left . SessionError) Right)) $
   Data.Pool.withResource pool $
   traverse $ 
   Hasql.Session.run session
