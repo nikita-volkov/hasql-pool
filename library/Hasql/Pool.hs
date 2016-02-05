@@ -1,6 +1,7 @@
 module Hasql.Pool
 (
   Pool,
+  Settings(..),
   acquire,
   release,
   use,
