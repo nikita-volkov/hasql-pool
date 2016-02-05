@@ -52,6 +52,6 @@ library
     -- database:
     hasql >= 0.19 && < 0.20,
     -- data:
-    time >= 1.4 && < 2,
+    time >= 1.5 && < 2,
     -- general:
-    base-prelude >= 0.1.19 && < 0.2
+    base-prelude >= 0.1.21 && < 0.2
