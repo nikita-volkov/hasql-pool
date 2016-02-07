@@ -47,7 +47,7 @@ release (Pool pool) =
 data UsageError =
   ConnectionError !Hasql.Connection.ConnectionError |
   SessionError !Hasql.Session.Error
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq)
 
 -- |
 -- Use a connection from the pool to run a session and
