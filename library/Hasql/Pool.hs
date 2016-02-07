@@ -20,6 +20,17 @@ import qualified Data.Pool
 newtype Pool =
   Pool (Data.Pool.Pool (Either Hasql.Connection.ConnectionError Hasql.Connection.Connection))
 
+-- |
+-- Settings of the connection pool. Consist of:
+-- 
+-- * Pool-size.
+-- 
+-- * Timeout.   
+-- An amount of time for which an unused resource is kept open.
+-- The smallest acceptable value is 0.5 seconds.
+-- 
+-- * Connection settings.
+-- 
 type Settings =
   (Int, NominalDiffTime, Hasql.Connection.Settings)
 
@@ -44,6 +55,8 @@ release :: Pool -> IO ()
 release (Pool pool) =
   Data.Pool.destroyAllResources pool
 
+-- |
+-- A union over the connection establishment error and the session error.
 data UsageError =
   ConnectionError !Hasql.Connection.ConnectionError |
   SessionError !Hasql.Session.Error
@@ -51,8 +64,7 @@ data UsageError =
 
 -- |
 -- Use a connection from the pool to run a session and
--- and return the connection to the pool, when finished.
--- Exception-safe.
+-- return the connection to the pool, when finished.
 use :: Pool -> Hasql.Session.Session a -> IO (Either UsageError a)
 use (Pool pool) session =
   fmap (either (Left . ConnectionError) (either (Left . SessionError) Right)) $
