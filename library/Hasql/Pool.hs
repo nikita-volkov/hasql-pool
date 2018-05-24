@@ -58,8 +58,8 @@ release (Pool pool) =
 -- |
 -- A union over the connection establishment error and the session error.
 data UsageError =
-  ConnectionError !Hasql.Connection.ConnectionError |
-  SessionError !Hasql.Session.Error
+  ConnectionError Hasql.Connection.ConnectionError |
+  SessionError Hasql.Session.QueryError
   deriving (Show, Eq)
 
 -- |
