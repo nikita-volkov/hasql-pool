@@ -1,7 +1,7 @@
 name:
   hasql-pool
 version:
-  0.4.3
+  0.4.3.1
 category:
   Hasql, Database, PostgreSQL
 synopsis:
@@ -49,7 +49,7 @@ library
     -- resources:
     resource-pool >= 0.2 && < 0.3,
     -- database:
-    hasql >= 0.19 && < 0.20 || >= 1 && < 2,
+    hasql >= 0.19 && < 0.20 || >= 1 && < 1.2,
     -- data:
     time >= 1.5 && < 2,
     -- general:
