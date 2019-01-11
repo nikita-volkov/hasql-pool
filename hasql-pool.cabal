@@ -53,4 +53,6 @@ library
     -- data:
     time >= 1.5 && < 2,
     -- general:
-    base-prelude >= 1 && < 2
+    base-prelude >= 1 && < 2,
+    -- exceptions (from base):
+    base >= 4.0 && < 5

@@ -9,6 +9,7 @@ module Hasql.Pool
 )
 where
 
+import Control.Exception (Exception, throwIO, catch)
 import Hasql.Pool.Prelude
 import qualified Hasql.Connection
 import qualified Hasql.Session
@@ -63,11 +64,22 @@ data UsageError =
   deriving (Show, Eq)
 
 -- |
+-- An exception to be thrown inside `Data.Pool.withResource`
+-- Its single responsibility is to make sure the resource
+-- is not returned to the pool in the case of a ConnectionError
+newtype PoolResourceException = PoolResourceException
+  { conErr :: Hasql.Connection.ConnectionError
+  } deriving (Show)
+
+instance Exception PoolResourceException
+
+-- |
 -- Use a connection from the pool to run a session and
 -- return the connection to the pool, when finished.
 use :: Pool -> Hasql.Session.Session a -> IO (Either UsageError a)
 use (Pool pool) session =
-  fmap (either (Left . ConnectionError) (either (Left . SessionError) Right)) $
-  Data.Pool.withResource pool $
-  traverse $ 
-  Hasql.Session.run session
+  (fmap (either (Left . ConnectionError) (either (Left . SessionError) Right)) $
+   Data.Pool.withResource pool $
+   const . traverse (Hasql.Session.run session) >>=
+   either (throwIO . PoolResourceException)) `catch`
+  (\(ex :: PoolResourceException) -> pure (Left (ConnectionError (conErr ex))))
