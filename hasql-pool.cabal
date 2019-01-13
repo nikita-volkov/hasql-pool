@@ -53,6 +53,34 @@ library
     -- data:
     time >= 1.5 && < 2,
     -- general:
-    base-prelude >= 1 && < 2,
-    -- exceptions (from base):
-    base >= 4.0 && < 5
+    base-prelude >= 1 && < 2
+
+
+test-suite test
+  type:
+    exitcode-stdio-1.0
+  hs-source-dirs:
+    test
+  main-is:
+    Main.hs
+  other-modules:
+    Hasql.PoolSpec
+    Hasql.Prelude
+  default-extensions:
+    Arrows, BangPatterns, ConstraintKinds, DataKinds, DefaultSignatures, DeriveDataTypeable, DeriveFoldable, DeriveFunctor, DeriveGeneric, DeriveTraversable, EmptyDataDecls, FlexibleContexts, FlexibleInstances, FunctionalDependencies, GADTs, GeneralizedNewtypeDeriving, LambdaCase, LiberalTypeSynonyms, MagicHash, MultiParamTypeClasses, MultiWayIf, NoImplicitPrelude, NoMonomorphismRestriction, OverloadedStrings, PatternGuards, ParallelListComp, QuasiQuotes, RankNTypes, RecordWildCards, ScopedTypeVariables, StandaloneDeriving, TemplateHaskell, TupleSections, TypeFamilies, TypeOperators, UnboxedTuples
+  default-language:
+    Haskell2010
+  build-depends:
+    hasql-pool,
+    -- hasql-pool internals:
+    resource-pool >= 0.2 && < 0.3,
+    -- database:
+    hasql >= 1.3 && < 1.4,
+    -- data:
+    -- text >= 1.2 && < 1.3,
+    -- testing:
+    hspec >= 2.6 && < 2.7,
+    tasty-hspec >= 1.1 && < 1.2,
+    tasty >= 1.2 && < 1.3,
+    -- general:
+    base-prelude >= 1 && < 2

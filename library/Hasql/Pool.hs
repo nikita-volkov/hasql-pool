@@ -1,6 +1,6 @@
 module Hasql.Pool
 (
-  Pool,
+  Pool(..),
   Settings(..),
   acquire,
   release,
@@ -9,7 +9,6 @@ module Hasql.Pool
 )
 where
 
-import Control.Exception (Exception, throwIO, catch)
 import Hasql.Pool.Prelude
 import qualified Hasql.Connection
 import qualified Hasql.Session
