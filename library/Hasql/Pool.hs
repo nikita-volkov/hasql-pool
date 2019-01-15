@@ -12,13 +12,14 @@ where
 import Hasql.Pool.Prelude
 import qualified Hasql.Connection
 import qualified Hasql.Session
-import qualified Data.Pool
+import qualified Data.Pool as ResourcePool
+import qualified Hasql.Pool.ResourcePool as ResourcePool
 
 
 -- |
 -- A pool of connections to DB.
 newtype Pool =
-  Pool (Data.Pool.Pool (Either Hasql.Connection.ConnectionError Hasql.Connection.Connection))
+  Pool (ResourcePool.Pool (Either Hasql.Connection.ConnectionError Hasql.Connection.Connection))
 
 -- |
 -- Settings of the connection pool. Consist of:
@@ -40,7 +41,7 @@ type Settings =
 acquire :: Settings -> IO Pool
 acquire (size, timeout, connectionSettings) =
   fmap Pool $
-  Data.Pool.createPool acquire release stripes timeout size
+  ResourcePool.createPool acquire release stripes timeout size
   where
     acquire =
       Hasql.Connection.acquire connectionSettings
@@ -53,7 +54,7 @@ acquire (size, timeout, connectionSettings) =
 -- Release the connection-pool.
 release :: Pool -> IO ()
 release (Pool pool) =
-  Data.Pool.destroyAllResources pool
+  ResourcePool.destroyAllResources pool
 
 -- |
 -- A union over the connection establishment error and the session error.
@@ -68,6 +69,6 @@ data UsageError =
 use :: Pool -> Hasql.Session.Session a -> IO (Either UsageError a)
 use (Pool pool) session =
   fmap (either (Left . ConnectionError) (either (Left . SessionError) Right)) $
-  Data.Pool.withResource pool $
-  traverse $ 
+  ResourcePool.withResourceOnEither pool $
+  traverse $
   Hasql.Session.run session
