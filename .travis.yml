@@ -49,5 +49,5 @@ script:
     if [ "$tests" = "1" ];
     then
       cabal clean;
-      cabal test --show-details=always --test-options=--quickcheck-tests=100000;
+      cabal test --show-details=always;
     fi;
