@@ -1,15 +1,15 @@
 env:
-  - ghc=7.6.1  cabal=1.18
-  - ghc=7.8.1  cabal=1.18
-  - ghc=7.10.1 cabal=1.22 benchmarks=1 tests=1
-  
+  - ghc=8.0.2
+  - ghc=8.2.2
+  - ghc=8.4.2
+  - ghc=8.6.1 benchmarks=1 tests=1
+
 install:
   # Set up the Shell to treat the semicolon as &&
   - set -o pipefail && set -e
   # Install GHC and Cabal
   -
-    ghc=${ghc=7.10.1}; 
-    cabal=${cabal=1.22};
+    cabal=${cabal=2.4};
     travis_retry sudo add-apt-repository -y ppa:hvr/ghc;
     travis_retry sudo apt-get update;
     travis_retry sudo apt-get install cabal-install-$cabal ghc-$ghc;
@@ -49,5 +49,5 @@ script:
     if [ "$tests" = "1" ];
     then
       cabal clean;
-      cabal test --show-details=always;
+      cabal test --show-details=always --test-options=--quickcheck-tests=100000;
     fi;
