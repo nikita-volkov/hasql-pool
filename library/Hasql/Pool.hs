@@ -26,6 +26,9 @@ newtype Pool =
 -- 
 -- * Pool-size.
 -- 
+-- * Stripes
+-- Number of sub-pools. For more info, see Data.Pool (resource-pool).
+-- 
 -- * Timeout.   
 -- An amount of time for which an unused resource is kept open.
 -- The smallest acceptable value is 0.5 seconds.
@@ -33,13 +36,13 @@ newtype Pool =
 -- * Connection settings.
 -- 
 type Settings =
-  (Int, NominalDiffTime, Hasql.Connection.Settings)
+  (Int, Int, NominalDiffTime, Hasql.Connection.Settings)
 
 -- |
 -- Given the pool-size, timeout and connection settings
 -- create a connection-pool.
 acquire :: Settings -> IO Pool
-acquire (size, timeout, connectionSettings) =
+acquire (size, stripes, timeout, connectionSettings) =
   fmap Pool $
   ResourcePool.createPool acquire release stripes timeout size
   where
@@ -47,8 +50,6 @@ acquire (size, timeout, connectionSettings) =
       Hasql.Connection.acquire connectionSettings
     release =
       either (const (pure ())) Hasql.Connection.release
-    stripes =
-      1
 
 -- |
 -- Release the connection-pool.

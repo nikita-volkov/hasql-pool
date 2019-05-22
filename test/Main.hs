@@ -13,7 +13,7 @@ import qualified Hasql.Statement as Statement
 main = hspec $ do
   describe "Hasql.Pool.use" $ do
     it "releases a spot in the pool when there is an error" $ do
-      pool <- acquire (1, 1, "host=localhost port=5432 user=postgres dbname=postgres")
+      pool <- acquire (1, 1, 1, "host=localhost port=5432 user=postgres dbname=postgres")
       let
         statement = Statement.Statement "" Encoders.unit Decoders.unit True
         session = Session.statement () statement
