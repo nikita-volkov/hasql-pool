@@ -20,6 +20,7 @@ import qualified Hasql.Pool.ResourcePool as ResourcePool
 -- A pool of connections to DB.
 newtype Pool =
   Pool (ResourcePool.Pool (Either Hasql.Connection.ConnectionError Hasql.Connection.Connection))
+  deriving (Show)
 
 -- |
 -- Settings of the connection pool. Consist of:
