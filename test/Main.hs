@@ -13,9 +13,9 @@ import qualified Hasql.Statement as Statement
 main = hspec $ do
   describe "Hasql.Pool.use" $ do
     it "releases a spot in the pool when there is an error" $ do
-      pool <- acquire Settings {
+      pool <- acquire defaultSettings {
         poolSize = 1,
-        timeout = 1,
+        Hasql.Pool.timeout = 1,
         connectionSettings = "host=localhost port=5432 user=postgres dbname=postgres"
       }
       let
