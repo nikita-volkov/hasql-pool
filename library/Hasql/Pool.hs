@@ -1,3 +1,5 @@
+{-# LANGUAGE NamedFieldPuns #-}
+
 module Hasql.Pool
 (
   Pool,
@@ -33,16 +35,20 @@ newtype Pool =
 -- 
 -- * Connection settings.
 -- 
-type Settings =
-  (Int, NominalDiffTime, Hasql.Connection.Settings)
+data Settings
+  = Settings
+  { poolSize :: Int
+  , timeout :: NominalDiffTime
+  , connectionSettings :: Hasql.Connection.Settings
+  }
 
 -- |
 -- Given the pool-size, timeout and connection settings
 -- create a connection-pool.
 acquire :: Settings -> IO Pool
-acquire (size, timeout, connectionSettings) =
+acquire (Settings { poolSize, timeout, connectionSettings }) =
   fmap Pool $
-  ResourcePool.createPool acquire release stripes timeout size
+  ResourcePool.createPool acquire release stripes timeout poolSize
   where
     acquire =
       Hasql.Connection.acquire connectionSettings
