@@ -6,6 +6,7 @@ module Hasql.Pool
   release,
   UsageError(..),
   use,
+  withConnection,
 )
 where
 
@@ -73,3 +74,8 @@ use (Pool pool) session =
   ResourcePool.withResourceOnEither pool $
   traverse $
   Hasql.Session.run session
+
+-- |
+-- Use a connection from the pool to act on it and
+-- return the connection to the pool, when finished.
+withConnection (Pool pool) = ResourcePool.withResource pool
