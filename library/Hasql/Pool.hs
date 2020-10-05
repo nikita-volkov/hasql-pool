@@ -105,6 +105,7 @@ acquire (size, timeout, connectionSettings) =
     queue <- newTQueueIO
     queueSizeVar <- newTVarIO 0
     aliveVar <- newTVarIO (size > 0)
+    forkIO $ loopCollectingGarbage timeout queue queueSizeVar aliveVar
     return (Pool size timeout connectionSettings queue queueSizeVar aliveVar)
 
 -- |
