@@ -18,6 +18,8 @@ import qualified Hasql.Connection
 import qualified Hasql.Session
 import Hasql.Session (QueryError(..), CommandError(ClientError))
 import qualified Data.Pool as ResourcePool
+import Hasql.Connection (Connection)
+import qualified Hasql.Connection as Hasql
 
 -- |
 -- A pool of connections to DB.
@@ -82,7 +84,7 @@ release (Pool { pool }) =
 -- |
 -- A union over the connection establishment error and the session error.
 data UsageError =
-  ConnectionError Hasql.Connection.ConnectionError |
+  ConnectionError Hasql.ConnectionError |
   SessionError Hasql.Session.QueryError
   deriving (Show, Eq)
 
@@ -91,17 +93,21 @@ data UsageError =
 -- return the connection to the pool, when finished.
 use :: Pool -> Hasql.Session.Session a -> IO (Either UsageError a)
 use (Pool { pool, settings }) session = do
-  res :: Either Hasql.Connection.ConnectionError (Either QueryError a)
+  let run conn = Hasql.Session.run session conn
+  res :: Either Hasql.ConnectionError (Either QueryError a)
     <- withResourceOnEither pool (connectionHealthCheck settings) $
-             traverse $
-               Hasql.Session.run session
+             traverse $ \conn -> run conn
+
   pure $ case res of
     Left connErr -> Left $ ConnectionError connErr
     Right (Left queryErr) -> Left $ SessionError queryErr
     Right (Right a) -> Right a
 
-
-withResourceOnEither :: ResourcePool.Pool resource -> (qfailure -> Bool) -> (resource -> IO (Either cfailure (Either qfailure success))) -> IO (Either cfailure (Either qfailure success))
+withResourceOnEither
+  :: ResourcePool.Pool (Either connErr Connection)
+  -> (QueryError -> Bool)
+  -> (Either connErr Connection -> IO (Either connErr (Either QueryError a)))
+  -> IO (Either connErr (Either QueryError a))
 withResourceOnEither pool check act = mask_ $ do
   (resource, localPool) <- ResourcePool.takeResource pool
   failureOrSuccess <- act resource `onException` ResourcePool.destroyResource pool localPool resource
