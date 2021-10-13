@@ -5,7 +5,9 @@ module Hasql.Pool
 (
   Pool,
   Settings(..),
+  ConnectionAction(..),
   defaultSettings,
+  defaultOnQueryError,
   acquire,
   release,
   UsageError(..),
@@ -26,7 +28,7 @@ import qualified Hasql.Connection as Hasql
 data Pool
   = Pool
   { pool :: ResourcePool.Pool (Either Hasql.Connection.ConnectionError Hasql.Connection.Connection)
-  , poolConnectionHealthCheck :: QueryError -> Bool
+  , poolOnQueryError :: QueryError -> IO ConnectionAction
   }
 
 instance Show Pool where
@@ -43,17 +45,28 @@ data Settings
   -- ^ An amount of time for which an unused resource is kept open. The smallest acceptable value is 0.5 seconds.
   , connectionSettings :: Hasql.Connection.Settings
   -- ^ Connection settings.
-  , connectionHealthCheck :: QueryError -> Bool
-  -- ^ Function called on an error returned by a @Session@ to evaluate whether the connection is still healthy.
-  -- When False is returned, the connection is evicted from the pool.
+  , onQueryError :: QueryError -> IO ConnectionAction
+  -- ^ Callback to be run whenver a query returns an error, to determine whether the connection is still healthy.
+  -- This is allowed to do I/O, so that more complicated logic can be implemented (e.g. via @Database.PQ.reset@ from @libpq@) if required.
+  --
+  -- See 'defaultOnQueryError' for the default logic.
 }
+
+-- | Return from the the 'onQueryError' to tell the pool whether to drop the connection.
+data ConnectionAction
+  = KeepConnection
+  -- ^ It was determined that the 'Connection' is still good, keep it.
+  | DropConnection
+  -- ^ The 'Connection' should be dropped.
 
 instance Show Settings where
   show (Settings { poolSize, timeout, connectionSettings }) = "Settings { poolSize = " <> show poolSize <> ", timeout = " <> show timeout <> ", connectionSettings = " <> show connectionSettings <> " }"
 
-defaultConnectionHealthCheck :: QueryError -> Bool
-defaultConnectionHealthCheck (QueryError _ _ (ClientError (Just "no connection to the server"))) = False
-defaultConnectionHealthCheck _ = True
+-- | Sets `onQueryError` to silently drop the connection if a 'ClientError' is encountered by a query,
+-- since that prevents us from re-using stale connections during multiple queries.
+defaultOnQueryError :: QueryError -> IO ConnectionAction
+defaultOnQueryError (QueryError _ _ (ClientError err)) = pure DropConnection
+defaultOnQueryError _ = pure KeepConnection
 
 defaultSettings :: Settings
 defaultSettings
@@ -61,17 +74,17 @@ defaultSettings
   { poolSize = 5
   , timeout = 60.0 :: NominalDiffTime
   , connectionSettings = ""
-  , connectionHealthCheck = defaultConnectionHealthCheck
+  , onQueryError = defaultOnQueryError
   }
 
 -- |
 -- Given the pool-size, timeout and connection settings
 -- create a connection-pool.
 acquire :: Settings -> IO Pool
-acquire (Settings { poolSize, timeout, connectionSettings, connectionHealthCheck }) = do
+acquire (Settings { poolSize, timeout, connectionSettings, onQueryError }) = do
   pool <- ResourcePool.createPool acquire release stripes timeout poolSize
   pure $ Pool {
-    poolConnectionHealthCheck = connectionHealthCheck,
+    poolOnQueryError = onQueryError,
     ..
   }
   where
@@ -102,7 +115,7 @@ use
   :: Pool
   -> Hasql.Session.Session a
   -> IO (Either UsageError a)
-use (Pool { pool, poolConnectionHealthCheck }) session =
+use (Pool { pool, poolOnQueryError }) session =
   -- mask the code, so that async exceptions don’t interrupt the `takeResource`
   mask_ $ do
 
@@ -129,13 +142,15 @@ use (Pool { pool, poolConnectionHealthCheck }) session =
             keepConn
             pure $ Right a
 
-          -- if the health check is successful, keep the connection
-          -- (this allows users to influence this logic)
-          Left queryErr | poolConnectionHealthCheck queryErr -> do
-            keepConn
-            pure $ Left $ SessionError queryErr
-
-          -- Otherwise, close the connection
-          Left queryErr | otherwise -> do
-            destroyConn
-            pure $ Left $ SessionError queryErr
+          Left queryErr -> do
+            -- Run the user-defined action if a query error is encountered,
+            -- then use the returned ConnectionAction to determine whether
+            -- the connection should be dropped.
+            connAction <- poolOnQueryError queryErr `onException` destroyConn
+            case connAction of
+              KeepConnection -> do
+                keepConn
+                pure $ Left $ SessionError queryErr
+              DropConnection -> do
+                destroyConn
+                pure $ Left $ SessionError queryErr
