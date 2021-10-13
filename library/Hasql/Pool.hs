@@ -100,18 +100,12 @@ data UsageError =
 -- return the connection to the pool, when finished.
 use :: Pool -> Hasql.Session.Session a -> IO (Either UsageError a)
 use p session = do
-  res :: Either Hasql.ConnectionError (Either QueryError a)
-    <- withResourceOnEither p session
-
-  pure $ case res of
-    Left connErr -> Left $ ConnectionError connErr
-    Right (Left queryErr) -> Left $ SessionError queryErr
-    Right (Right a) -> Right a
+  withResourceOnEither p session
 
 withResourceOnEither
   :: Pool
   -> Hasql.Session.Session a
-  -> IO (Either Hasql.ConnectionError (Either QueryError a))
+  -> IO (Either UsageError a)
 withResourceOnEither (Pool { pool, poolConnectionHealthCheck }) session = mask_ $ do
   (resource, localPool) <- ResourcePool.takeResource pool
   let run conn =
@@ -119,15 +113,15 @@ withResourceOnEither (Pool { pool, poolConnectionHealthCheck }) session = mask_ 
           `onException` ResourcePool.destroyResource pool localPool resource
   failureOrSuccess <- traverse run resource
   case failureOrSuccess of
-    r@(Right (Right success)) -> do
+    Right (Right a) -> do
       ResourcePool.putResource localPool resource
-      return r
-    r@(Right (Left failure)) | poolConnectionHealthCheck failure -> do
+      pure $ Right a
+    Right (Left queryErr) | poolConnectionHealthCheck queryErr -> do
       ResourcePool.putResource localPool resource
-      return r
-    r@(Right (Left failure)) | otherwise -> do
+      pure $ Left $ SessionError queryErr
+    Right (Left queryErr) | otherwise -> do
       ResourcePool.destroyResource pool localPool resource
-      return r
-    l@(Left failure) -> do
+      pure $ Left $ SessionError queryErr
+    (Left connErr) -> do
       ResourcePool.destroyResource pool localPool resource
-      return l
+      pure $ Left $ ConnectionError connErr
