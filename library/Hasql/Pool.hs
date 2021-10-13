@@ -103,21 +103,21 @@ use
   -> Hasql.Session.Session a
   -> IO (Either UsageError a)
 use (Pool { pool, poolConnectionHealthCheck }) session = mask_ $ do
-  (resource, localPool) <- ResourcePool.takeResource pool
-  let run conn =
-        Hasql.Session.run session conn
-          `onException` ResourcePool.destroyResource pool localPool resource
-  failureOrSuccess <- traverse run resource
-  case failureOrSuccess of
-    Right (Right a) -> do
-      ResourcePool.putResource localPool resource
-      pure $ Right a
-    Right (Left queryErr) | poolConnectionHealthCheck queryErr -> do
-      ResourcePool.putResource localPool resource
-      pure $ Left $ SessionError queryErr
-    Right (Left queryErr) | otherwise -> do
-      ResourcePool.destroyResource pool localPool resource
-      pure $ Left $ SessionError queryErr
-    (Left connErr) -> do
-      ResourcePool.destroyResource pool localPool resource
+  (eConn :: Either Hasql.ConnectionError Connection, localPool) <- ResourcePool.takeResource pool
+  case eConn of
+    Left connErr -> do
+      ResourcePool.destroyResource pool localPool eConn
       pure $ Left $ ConnectionError connErr
+    Right conn -> do
+      res <- Hasql.Session.run session conn
+              `onException` ResourcePool.destroyResource pool localPool eConn
+      case res of
+        Right a -> do
+          ResourcePool.putResource localPool eConn
+          pure $ Right a
+        Left queryErr | poolConnectionHealthCheck queryErr -> do
+          ResourcePool.putResource localPool eConn
+          pure $ Left $ SessionError queryErr
+        Left queryErr | otherwise -> do
+          ResourcePool.destroyResource pool localPool eConn
+          pure $ Left $ SessionError queryErr
