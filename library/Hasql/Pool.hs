@@ -4,14 +4,18 @@
 module Hasql.Pool
 (
   Pool,
-  Settings(..),
-  ConnectionAction(..),
-  defaultSettings,
-  defaultOnQueryError,
+  -- * Create  the pool
   acquire,
-  release,
-  UsageError(..),
+  Settings(..),
+  defaultSettings,
+  -- * Use the pool
   use,
+  release,
+  -- * Error
+  UsageError(..),
+  -- * Settings
+  defaultOnQueryError,
+  ConnectionAction(..),
 )
 where
 
@@ -24,7 +28,7 @@ import Hasql.Connection (Connection)
 import qualified Hasql.Connection as Hasql
 
 -- |
--- A pool of connections to DB.
+-- A pool of connections to the database.
 data Pool
   = Pool
   { pool :: ResourcePool.Pool (Either Hasql.Connection.ConnectionError Hasql.Connection.Connection)
@@ -44,7 +48,7 @@ data Settings
   , timeout :: NominalDiffTime
   -- ^ An amount of time for which an unused resource is kept open. The smallest acceptable value is 0.5 seconds.
   , connectionSettings :: Hasql.Connection.Settings
-  -- ^ Connection settings.
+  -- ^ Hasql database connection setting string.
   , onQueryError :: QueryError -> IO ConnectionAction
   -- ^ Callback to be run whenver a query returns an error, to determine whether the connection is still healthy.
   -- This is allowed to do I/O, so that more complicated logic can be implemented (e.g. via @Database.PQ.reset@ from @libpq@) if required.
@@ -68,6 +72,13 @@ defaultOnQueryError :: QueryError -> IO ConnectionAction
 defaultOnQueryError (QueryError _ _ (ClientError err)) = pure DropConnection
 defaultOnQueryError _ = pure KeepConnection
 
+-- |
+-- @
+-- poolSize = 5
+-- timeout = 60 (seconds)
+-- connectionSettings = ""
+-- onQueryError = 'defaultOnQueryError'
+-- @
 defaultSettings :: Settings
 defaultSettings
   = Settings
@@ -78,8 +89,11 @@ defaultSettings
   }
 
 -- |
--- Given the pool-size, timeout and connection settings
--- create a connection-pool.
+-- Create a connection-pool.
+--
+-- See 'defaultSettings'.
+--
+-- Don’t forget to pass the right 'connectionSettings' string.
 acquire :: Settings -> IO Pool
 acquire (Settings { poolSize, timeout, connectionSettings, onQueryError }) = do
   pool <- ResourcePool.createPool acquire release stripes timeout poolSize
@@ -97,6 +111,9 @@ acquire (Settings { poolSize, timeout, connectionSettings, onQueryError }) = do
 
 -- |
 -- Release the connection-pool.
+--
+-- It will be released by the garbage collector at some point,
+-- but you should still release it as soon as possible to drop all connections to the database server.
 release :: Pool -> IO ()
 release (Pool { pool }) =
   ResourcePool.destroyAllResources pool
@@ -105,12 +122,15 @@ release (Pool { pool }) =
 -- A union over the connection establishment error and the session error.
 data UsageError =
   ConnectionError Hasql.ConnectionError |
+  -- ^ The connection errored when it was created. It will be removed from the pool.
   SessionError Hasql.Session.QueryError
+  -- ^ The query errored.
+  -- Whether the connection is removed from the pool is determined by 'defaultOnQueryError'.
   deriving (Show, Eq)
 
 -- |
--- Use a connection from the pool to run a session and
--- return the connection to the pool, when finished.
+-- Use a connection from the pool to run some actions on the database,
+-- and return the connection to the pool, when finished.
 use
   :: Pool
   -> Hasql.Session.Session a
