@@ -102,38 +102,40 @@ use
   :: Pool
   -> Hasql.Session.Session a
   -> IO (Either UsageError a)
-use (Pool { pool, poolConnectionHealthCheck }) session = mask_ $ do
+use (Pool { pool, poolConnectionHealthCheck }) session =
+  -- mask the code, so that async exceptions don’t interrupt the `takeResource`
+  mask_ $ do
 
-  -- Take the connection from the pool
-  (eConn :: Either Hasql.ConnectionError Connection, localPool) <- ResourcePool.takeResource pool
+    -- Take the connection from the pool
+    (eConn :: Either Hasql.ConnectionError Connection, localPool) <- ResourcePool.takeResource pool
 
-  -- the connection can’t be used again, destroy it
-  let destroyConn = ResourcePool.destroyResource pool localPool eConn
-  -- the connection should be put back in the pool
-  let keepConn = ResourcePool.putResource localPool eConn
+    -- the connection can’t be used again, destroy it
+    let destroyConn = ResourcePool.destroyResource pool localPool eConn
+    -- the connection should be put back in the pool
+    let keepConn = ResourcePool.putResource localPool eConn
 
-  case eConn of
-    -- on connection error, we destroy the connection and return the connection error
-    -- (it happened when the connection was initially created)
-    Left connErr -> do
-      destroyConn
-      pure $ Left $ ConnectionError connErr
-    Right conn -> do
-      res <- Hasql.Session.run session conn
-              -- before the exception is rethrown, make sure the connection is destroyed
-              `onException` destroyConn
-      case res of
-        Right a -> do
-          keepConn
-          pure $ Right a
+    case eConn of
+      -- on connection error, we destroy the connection and return the connection error
+      -- (it happened when the connection was initially created)
+      Left connErr -> do
+        destroyConn
+        pure $ Left $ ConnectionError connErr
+      Right conn -> do
+        res <- Hasql.Session.run session conn
+                -- before the exception is rethrown, make sure the connection is destroyed
+                `onException` destroyConn
+        case res of
+          Right a -> do
+            keepConn
+            pure $ Right a
 
-        -- if the health check is successful, keep the connection
-        -- (this allows users to influence this logic)
-        Left queryErr | poolConnectionHealthCheck queryErr -> do
-          keepConn
-          pure $ Left $ SessionError queryErr
+          -- if the health check is successful, keep the connection
+          -- (this allows users to influence this logic)
+          Left queryErr | poolConnectionHealthCheck queryErr -> do
+            keepConn
+            pure $ Left $ SessionError queryErr
 
-        -- Otherwise, close the connection
-        Left queryErr | otherwise -> do
-          destroyConn
-          pure $ Left $ SessionError queryErr
+          -- Otherwise, close the connection
+          Left queryErr | otherwise -> do
+            destroyConn
+            pure $ Left $ SessionError queryErr
