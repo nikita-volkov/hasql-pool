@@ -99,10 +99,10 @@ data UsageError =
 -- Use a connection from the pool to run a session and
 -- return the connection to the pool, when finished.
 use :: Pool -> Hasql.Session.Session a -> IO (Either UsageError a)
-use (Pool { pool, poolConnectionHealthCheck }) session = do
+use p session = do
   let run conn = Hasql.Session.run session conn
   res :: Either Hasql.ConnectionError (Either QueryError a)
-    <- withResourceOnEither pool poolConnectionHealthCheck $
+    <- withResourceOnEither p $
              traverse $ \conn -> run conn
 
   pure $ case res of
@@ -111,18 +111,17 @@ use (Pool { pool, poolConnectionHealthCheck }) session = do
     Right (Right a) -> Right a
 
 withResourceOnEither
-  :: ResourcePool.Pool (Either connErr Connection)
-  -> (QueryError -> Bool)
-  -> (Either connErr Connection -> IO (Either connErr (Either QueryError a)))
-  -> IO (Either connErr (Either QueryError a))
-withResourceOnEither pool check act = mask_ $ do
+  :: Pool
+  -> (Either Hasql.ConnectionError Connection -> IO (Either Hasql.ConnectionError (Either QueryError a)))
+  -> IO (Either Hasql.ConnectionError (Either QueryError a))
+withResourceOnEither (Pool { pool, poolConnectionHealthCheck }) act = mask_ $ do
   (resource, localPool) <- ResourcePool.takeResource pool
   failureOrSuccess <- act resource `onException` ResourcePool.destroyResource pool localPool resource
   case failureOrSuccess of
     r@(Right (Right success)) -> do
       ResourcePool.putResource localPool resource
       return r
-    r@(Right (Left failure)) | check failure -> do
+    r@(Right (Left failure)) | poolConnectionHealthCheck failure -> do
       ResourcePool.putResource localPool resource
       return r
     r@(Right (Left failure)) | otherwise -> do
