@@ -98,15 +98,11 @@ data UsageError =
 -- |
 -- Use a connection from the pool to run a session and
 -- return the connection to the pool, when finished.
-use :: Pool -> Hasql.Session.Session a -> IO (Either UsageError a)
-use p session = do
-  withResourceOnEither p session
-
-withResourceOnEither
+use
   :: Pool
   -> Hasql.Session.Session a
   -> IO (Either UsageError a)
-withResourceOnEither (Pool { pool, poolConnectionHealthCheck }) session = mask_ $ do
+use (Pool { pool, poolConnectionHealthCheck }) session = mask_ $ do
   (resource, localPool) <- ResourcePool.takeResource pool
   let run conn =
         Hasql.Session.run session conn
