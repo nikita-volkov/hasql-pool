@@ -26,8 +26,13 @@ import qualified Hasql.Connection as Hasql
 data Pool
   = Pool
   { pool :: ResourcePool.Pool (Either Hasql.Connection.ConnectionError Hasql.Connection.Connection)
-  , settings :: Settings
-  } deriving (Show)
+  , poolConnectionHealthCheck :: QueryError -> Bool
+  }
+
+instance Show Pool where
+  -- Just display the pool.
+  showsPrec i (Pool { pool }) = showsPrec i pool
+
 
 -- | Settings of the connection pool. Consist of:
 data Settings
@@ -63,10 +68,12 @@ defaultSettings
 -- Given the pool-size, timeout and connection settings
 -- create a connection-pool.
 acquire :: Settings -> IO Pool
-acquire stgs@(Settings { poolSize, timeout, connectionSettings }) =
-  Pool
-    <$> ResourcePool.createPool acquire release stripes timeout poolSize
-    <*> pure stgs
+acquire (Settings { poolSize, timeout, connectionSettings, connectionHealthCheck }) = do
+  pool <- ResourcePool.createPool acquire release stripes timeout poolSize
+  pure $ Pool {
+    poolConnectionHealthCheck = connectionHealthCheck,
+    ..
+  }
   where
     acquire =
       Hasql.Connection.acquire connectionSettings
@@ -92,10 +99,10 @@ data UsageError =
 -- Use a connection from the pool to run a session and
 -- return the connection to the pool, when finished.
 use :: Pool -> Hasql.Session.Session a -> IO (Either UsageError a)
-use (Pool { pool, settings }) session = do
+use (Pool { pool, poolConnectionHealthCheck }) session = do
   let run conn = Hasql.Session.run session conn
   res :: Either Hasql.ConnectionError (Either QueryError a)
-    <- withResourceOnEither pool (connectionHealthCheck settings) $
+    <- withResourceOnEither pool poolConnectionHealthCheck $
              traverse $ \conn -> run conn
 
   pure $ case res of
