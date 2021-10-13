@@ -43,7 +43,6 @@ library
     Haskell2010
   other-modules:
     Hasql.Pool.Prelude
-    Hasql.Pool.ResourcePool
   exposed-modules:
     Hasql.Pool
   build-depends:

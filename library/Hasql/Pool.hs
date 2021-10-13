@@ -18,8 +18,6 @@ import qualified Hasql.Connection
 import qualified Hasql.Session
 import Hasql.Session (QueryError(..), CommandError(ClientError))
 import qualified Data.Pool as ResourcePool
-import qualified Hasql.Pool.ResourcePool as ResourcePool
-
 
 -- |
 -- A pool of connections to DB.
@@ -94,6 +92,25 @@ data UsageError =
 use :: Pool -> Hasql.Session.Session a -> IO (Either UsageError a)
 use (Pool { pool, settings }) session =
   fmap (either (Left . ConnectionError) (either (Left . SessionError) Right)) $
-  ResourcePool.withResourceOnEither pool (connectionHealthCheck settings) $
+  withResourceOnEither pool (connectionHealthCheck settings) $
   traverse $
   Hasql.Session.run session
+
+
+withResourceOnEither :: ResourcePool.Pool resource -> (qfailure -> Bool) -> (resource -> IO (Either cfailure (Either qfailure success))) -> IO (Either cfailure (Either qfailure success))
+withResourceOnEither pool check act = mask_ $ do
+  (resource, localPool) <- ResourcePool.takeResource pool
+  failureOrSuccess <- act resource `onException` ResourcePool.destroyResource pool localPool resource
+  case failureOrSuccess of
+    r@(Right (Right success)) -> do
+      ResourcePool.putResource localPool resource
+      return r
+    r@(Right (Left failure)) | check failure -> do
+      ResourcePool.putResource localPool resource
+      return r
+    r@(Right (Left failure)) | otherwise -> do
+      ResourcePool.destroyResource pool localPool resource
+      return r
+    l@(Left failure) -> do
+      ResourcePool.destroyResource pool localPool resource
+      return l
