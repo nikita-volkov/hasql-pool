@@ -113,9 +113,11 @@ withResourceOnEither
   -> Hasql.Session.Session a
   -> IO (Either Hasql.ConnectionError (Either QueryError a))
 withResourceOnEither (Pool { pool, poolConnectionHealthCheck }) session = mask_ $ do
-  let run conn = Hasql.Session.run session conn
   (resource, localPool) <- ResourcePool.takeResource pool
-  failureOrSuccess <- traverse run resource `onException` ResourcePool.destroyResource pool localPool resource
+  let run conn =
+        Hasql.Session.run session conn
+          `onException` ResourcePool.destroyResource pool localPool resource
+  failureOrSuccess <- traverse run resource
   case failureOrSuccess of
     r@(Right (Right success)) -> do
       ResourcePool.putResource localPool resource
