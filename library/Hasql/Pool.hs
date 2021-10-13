@@ -31,15 +31,15 @@ data Pool
 data Settings
   = Settings
   { poolSize :: Int
-  -- | ^ size of the pool
+  -- ^ size of the pool
   , timeout :: NominalDiffTime
-  -- | ^ An amount of time for which an unused resource is kept open. The smallest acceptable value is 0.5 seconds.
+  -- ^ An amount of time for which an unused resource is kept open. The smallest acceptable value is 0.5 seconds.
   , connectionSettings :: Hasql.Connection.Settings
-  -- | ^ Connection settings.
+  -- ^ Connection settings.
   , connectionHealthCheck :: QueryError -> Bool
-  -- | ^ Function called on an error returned by a @Session@ to evaluate whether the connection is still healthy.
-  -- | When False is returned, the connection is evicted from the pool.
-  }
+  -- ^ Function called on an error returned by a @Session@ to evaluate whether the connection is still healthy.
+  -- When False is returned, the connection is evicted from the pool.
+}
 
 instance Show Settings where
   show (Settings { poolSize, timeout, connectionSettings }) = "Settings { poolSize = " <> show poolSize <> ", timeout = " <> show timeout <> ", connectionSettings = " <> show connectionSettings <> " }"
@@ -90,11 +90,15 @@ data UsageError =
 -- Use a connection from the pool to run a session and
 -- return the connection to the pool, when finished.
 use :: Pool -> Hasql.Session.Session a -> IO (Either UsageError a)
-use (Pool { pool, settings }) session =
-  fmap (either (Left . ConnectionError) (either (Left . SessionError) Right)) $
-  withResourceOnEither pool (connectionHealthCheck settings) $
-  traverse $
-  Hasql.Session.run session
+use (Pool { pool, settings }) session = do
+  res :: Either Hasql.Connection.ConnectionError (Either QueryError a)
+    <- withResourceOnEither pool (connectionHealthCheck settings) $
+             traverse $
+               Hasql.Session.run session
+  pure $ case res of
+    Left connErr -> Left $ ConnectionError connErr
+    Right (Left queryErr) -> Left $ SessionError queryErr
+    Right (Right a) -> Right a
 
 
 withResourceOnEither :: ResourcePool.Pool resource -> (qfailure -> Bool) -> (resource -> IO (Either cfailure (Either qfailure success))) -> IO (Either cfailure (Either qfailure success))
