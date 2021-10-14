@@ -1,7 +1,7 @@
 name:
   hasql-pool
 version:
-  0.5.2
+  0.6.0
 category:
   Hasql, Database, PostgreSQL
 synopsis:
@@ -20,6 +20,8 @@ license:
   MIT
 license-file:
   LICENSE
+extra-source-files:
+  CHANGELOG.md
 build-type:
   Simple
 cabal-version:
