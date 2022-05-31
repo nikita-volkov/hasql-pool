@@ -1,7 +1,7 @@
 name:
   hasql-pool
 version:
-  0.5.2.1
+  0.6
 category:
   Hasql, Database, PostgreSQL
 synopsis:
