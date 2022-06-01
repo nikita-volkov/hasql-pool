@@ -19,7 +19,7 @@ main = hspec $ do
       pool <- acquire (3, 1, connectionSettings)
       res <- use pool $ closeConnSession >> selectOneSession
       shouldSatisfy res $ \case
-        Left (SessionError (Session.QueryError _ _ (Session.ClientError _))) -> True
+        Left (SessionUsageError (Session.QueryError _ _ (Session.ClientError _))) -> True
         _ -> False
     it "Connection errors cause eviction of connection" $ do
       pool <- acquire (3, 1, connectionSettings)
