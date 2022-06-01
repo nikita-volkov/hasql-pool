@@ -1,37 +1,34 @@
 module Hasql.Pool
-(
-  Pool,
-  Settings(..),
-  acquire,
-  release,
-  UsageError(..),
-  use,
-)
+  ( Pool,
+    Settings (..),
+    acquire,
+    release,
+    UsageError (..),
+    use,
+  )
 where
 
-import Hasql.Pool.Prelude
 import Hasql.Connection (Connection)
-import Hasql.Session (Session)
 import qualified Hasql.Connection as Connection
+import Hasql.Pool.Prelude
+import Hasql.Session (Session)
 import qualified Hasql.Session as Session
-
 
 -- |
 -- A pool of connections to DB.
-data Pool =
-  Pool
-    Connection.Settings
-    {-^ Connection settings. -}
-    (TQueue ActiveConnection)
-    {-^ Queue of established connections. -}
-    (TVar Int)
-    {-^ Slots available for establishing new connections. -}
-    (TVar Bool)
-    {-^ Flag signaling whether pool's alive. -}
+data Pool
+  = Pool
+      Connection.Settings
+      -- ^ Connection settings.
+      (TQueue ActiveConnection)
+      -- ^ Queue of established connections.
+      (TVar Int)
+      -- ^ Slots available for establishing new connections.
+      (TVar Bool)
+      -- ^ Flag signaling whether pool's alive.
 
-data ActiveConnection =
-  ActiveConnection {
-    activeConnectionLastUseTimestamp :: Int,
+data ActiveConnection = ActiveConnection
+  { activeConnectionLastUseTimestamp :: Int,
     activeConnectionConnection :: Connection
   }
 
@@ -42,77 +39,71 @@ loopCollectingGarbage timeout establishedQueue slotsAvailVar aliveVar =
     decide =
       do
         ts <- getMillisecondsSinceEpoch
-        join $ atomically $ do
-          alive <- readTVar aliveVar
-          if alive
-            then let
-              tryToRelease =
-                tryReadTQueue establishedQueue >>= \ case
-                  -- The queue is empty. Just wait for changes in the state.
-                  Nothing ->
-                    retry
-                  Just entry@(ActiveConnection lastUseTs connection) ->
-                    let
-                      outdatingTs =
-                        lastUseTs + timeout
-                      in
-                        -- Check whether it's outdated.
-                        if outdatingTs < ts
-                          -- Fetch the current value of available slots and
-                          -- release this one and other connections.
-                          then do
-                            slotsAvail <- readTVar slotsAvailVar
-                            collectAndRelease slotsAvail [connection] outdatingTs
-                          -- Return it to the front of the queue and
-                          -- wait until it's outdating time.
-                          else do
-                            unGetTQueue establishedQueue entry
-                            return (sleep outdatingTs *> decide)
-              collectAndRelease !slotsAvail !outdatedList outdatingTs =
-                tryReadTQueue establishedQueue >>= \ case
-                  Nothing ->
-                    finalizeAndRelease slotsAvail outdatedList outdatingTs
-                  Just entry@(ActiveConnection lastUseTs connection) ->
-                    let
-                      outdatingTs =
-                        lastUseTs + timeout
-                      in
-                        if outdatingTs < ts
-                          then do
-                            unGetTQueue establishedQueue entry
-                            finalizeAndRelease slotsAvail outdatedList outdatingTs
-                          else
-                            collectAndRelease (succ slotsAvail) (connection : outdatedList) outdatingTs
-              finalizeAndRelease slotsAvail outdatedList outdatingTs =
-                do
-                  writeTVar slotsAvailVar slotsAvail
-                  return (release outdatedList *> sleep outdatingTs *> decide)
-              in tryToRelease
-            else do
-              list <- flushTQueue establishedQueue
-              return (release (fmap activeConnectionConnection list))
+        join $
+          atomically $ do
+            alive <- readTVar aliveVar
+            if alive
+              then
+                let tryToRelease =
+                      tryReadTQueue establishedQueue >>= \case
+                        -- The queue is empty. Just wait for changes in the state.
+                        Nothing ->
+                          retry
+                        Just entry@(ActiveConnection lastUseTs connection) ->
+                          let outdatingTs =
+                                lastUseTs + timeout
+                           in -- Check whether it's outdated.
+                              if outdatingTs < ts
+                                then -- Fetch the current value of available slots and
+                                -- release this one and other connections.
+                                do
+                                  slotsAvail <- readTVar slotsAvailVar
+                                  collectAndRelease slotsAvail [connection] outdatingTs
+                                else -- Return it to the front of the queue and
+                                -- wait until it's outdating time.
+                                do
+                                  unGetTQueue establishedQueue entry
+                                  return (sleep outdatingTs *> decide)
+                    collectAndRelease !slotsAvail !outdatedList outdatingTs =
+                      tryReadTQueue establishedQueue >>= \case
+                        Nothing ->
+                          finalizeAndRelease slotsAvail outdatedList outdatingTs
+                        Just entry@(ActiveConnection lastUseTs connection) ->
+                          let outdatingTs =
+                                lastUseTs + timeout
+                           in if outdatingTs < ts
+                                then do
+                                  unGetTQueue establishedQueue entry
+                                  finalizeAndRelease slotsAvail outdatedList outdatingTs
+                                else collectAndRelease (succ slotsAvail) (connection : outdatedList) outdatingTs
+                    finalizeAndRelease slotsAvail outdatedList outdatingTs =
+                      do
+                        writeTVar slotsAvailVar slotsAvail
+                        return (release outdatedList *> sleep outdatingTs *> decide)
+                 in tryToRelease
+              else do
+                list <- flushTQueue establishedQueue
+                return (release (fmap activeConnectionConnection list))
     sleep untilTs =
       do
         ts <- getMillisecondsSinceEpoch
-        let
-          diff =
-            untilTs - ts
-          in if diff > 0
-            then threadDelay (diff * 1000)
-            else return ()
+        let diff =
+              untilTs - ts
+         in if diff > 0
+              then threadDelay (diff * 1000)
+              else return ()
     release =
       traverse_ Connection.release
 
 -- |
 -- Settings of the connection pool. Consist of:
--- 
+--
 -- * Pool-size.
--- 
--- * Timeout.   
+--
+-- * Timeout.
 -- An amount of time in milliseconds for which the unused connections are kept open.
--- 
+--
 -- * Connection settings.
--- 
 type Settings =
   (Int, Int, Connection.Settings)
 
@@ -136,10 +127,10 @@ release (Pool _ _ _ aliveVar) =
 
 -- |
 -- A union over the connection establishment error and the session error.
-data UsageError =
-  ConnectionUsageError Connection.ConnectionError |
-  SessionUsageError Session.QueryError |
-  PoolIsReleasedUsageError
+data UsageError
+  = ConnectionUsageError Connection.ConnectionError
+  | SessionUsageError Session.QueryError
+  | PoolIsReleasedUsageError
   deriving (Show, Eq)
 
 -- |
@@ -147,28 +138,28 @@ data UsageError =
 -- return the connection to the pool, when finished.
 use :: Pool -> Session.Session a -> IO (Either UsageError a)
 use (Pool connectionSettings establishedQueue slotsAvailVar aliveVar) session =
-  join $ atomically $ do
-    alive <- readTVar aliveVar
-    if alive
-      then
-        tryReadTQueue establishedQueue >>= \ case
-          -- No established connection avail at the moment.
-          Nothing -> do
-            slotsAvail <- readTVar slotsAvailVar
-            -- Do we have any slots left for establishing new connections?
-            if slotsAvail > 0
-              -- Reduce the available slots var and instruct to
-              -- establish and use a new connection.
-              then do
-                writeTVar slotsAvailVar $! pred slotsAvail
-                return acquireConnectionThenUseThenPutItToQueue
-              -- Wait until the state changes and retry.
-              else
-                retry
-          Just (ActiveConnection _ connection) ->
-            return (useConnectionThenPutItToQueue connection)
-      else
-        return (return (Left PoolIsReleasedUsageError))
+  join $
+    atomically $ do
+      alive <- readTVar aliveVar
+      if alive
+        then
+          tryReadTQueue establishedQueue >>= \case
+            -- No established connection avail at the moment.
+            Nothing -> do
+              slotsAvail <- readTVar slotsAvailVar
+              -- Do we have any slots left for establishing new connections?
+              if slotsAvail > 0
+                then -- Reduce the available slots var and instruct to
+                -- establish and use a new connection.
+                do
+                  writeTVar slotsAvailVar $! pred slotsAvail
+                  return acquireConnectionThenUseThenPutItToQueue
+                else -- Wait until the state changes and retry.
+
+                  retry
+            Just (ActiveConnection _ connection) ->
+              return (useConnectionThenPutItToQueue connection)
+        else return (return (Left PoolIsReleasedUsageError))
   where
     acquireConnectionThenUseThenPutItToQueue =
       do
