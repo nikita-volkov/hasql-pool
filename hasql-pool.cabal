@@ -1,7 +1,7 @@
 name:
   hasql-pool
 version:
-  0.5.2.2
+  0.6
 category:
   Hasql, Database, PostgreSQL
 synopsis:
@@ -24,6 +24,8 @@ build-type:
   Simple
 cabal-version:
   >=1.10
+extra-source-files:
+  CHANGELOG.md
 
 
 source-repository head
