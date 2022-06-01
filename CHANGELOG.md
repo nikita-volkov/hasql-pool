@@ -1,3 +1,7 @@
+# 0.7.1
+
+Added `Exception` for `UsageError`.
+
 # 0.7
 
 Simplified the implementation a lot by removing the notion of timeout.

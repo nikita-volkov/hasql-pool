@@ -51,6 +51,8 @@ data UsageError
   | PoolIsReleasedUsageError
   deriving (Show, Eq)
 
+instance Exception UsageError
+
 -- |
 -- Use a connection from the pool to run a session and
 -- return the connection to the pool, when finished.
