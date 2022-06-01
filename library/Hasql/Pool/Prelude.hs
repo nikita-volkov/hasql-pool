@@ -1,14 +1,7 @@
 module Hasql.Pool.Prelude
-( 
-  module Exports,
-)
+  ( module Exports,
+  )
 where
 
-
--- base-prelude
--------------------------
-import BasePrelude as Exports hiding (assert, left, right, isLeft, isRight, error)
-
--- time
--------------------------
+import BasePrelude as Exports hiding (assert, error, isLeft, isRight, left, right)
 import Data.Time as Exports

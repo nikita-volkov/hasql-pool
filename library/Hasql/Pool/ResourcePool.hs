@@ -1,12 +1,9 @@
-{-|
-Extras for the resource-pool library.
--}
-module Hasql.Pool.ResourcePool
-where
+-- |
+-- Extras for the resource-pool library.
+module Hasql.Pool.ResourcePool where
 
-import Hasql.Pool.Prelude
 import Data.Pool
-
+import Hasql.Pool.Prelude
 
 withResourceOnEither :: Pool resource -> (resource -> IO (Either failure success)) -> IO (Either failure success)
 withResourceOnEither pool act = mask_ $ do
