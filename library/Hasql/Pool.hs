@@ -128,14 +128,17 @@ release (Pool _ _ _ aliveVar) =
 -- |
 -- A union over the connection establishment error and the session error.
 data UsageError
-  = ConnectionUsageError Connection.ConnectionError
-  | SessionUsageError Session.QueryError
-  | PoolIsReleasedUsageError
+  = -- | Error during an attempt to connect.
+    ConnectionUsageError Connection.ConnectionError
+  | -- | Error during session execution.
+    SessionUsageError Session.QueryError
+  | -- | Pool has been released and can no longer be used.
+    PoolIsReleasedUsageError
   deriving (Show, Eq)
 
--- |
--- Use a connection from the pool to run a session and
--- return the connection to the pool, when finished.
+-- | Use a connection from the pool to run a session and return the connection
+-- to the pool, when finished. If the session fails
+-- with 'Session.ClientError' the connection gets reestablished.
 use :: Pool -> Session.Session a -> IO (Either UsageError a)
 use (Pool connectionSettings establishedQueue slotsAvailVar aliveVar) session =
   join $
