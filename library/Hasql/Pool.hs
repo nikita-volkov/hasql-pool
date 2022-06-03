@@ -94,10 +94,12 @@ use Pool {..} sess =
           returnConn
           return $ Right res
       where
-        returnConn = do
-          atomically $ do
+        returnConn =
+          join . atomically $ do
             alive <- readTVar poolAlive
-            when alive $ writeTQueue poolConnectionQueue conn
+            if alive
+              then writeTQueue poolConnectionQueue conn $> return ()
+              else return $ Connection.release conn
 
 -- |
 -- A union over the connection establishment error and the session error.
