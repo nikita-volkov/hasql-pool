@@ -1,9 +1,11 @@
 module Hasql.Pool
-  ( Pool,
+  ( -- * --
+    Pool,
     acquire,
     release,
-    UsageError (..),
     use,
+    -- * --
+    UsageError (..),
   )
 where
 
@@ -43,19 +45,13 @@ release Pool {..} = do
     flushTQueue poolConnectionQueue
   forM_ connections Connection.release
 
--- |
--- A union over the connection establishment error and the session error.
-data UsageError
-  = ConnectionUsageError Connection.ConnectionError
-  | SessionUsageError Session.QueryError
-  | PoolIsReleasedUsageError
-  deriving (Show, Eq)
-
-instance Exception UsageError
-
--- |
--- Use a connection from the pool to run a session and
--- return the connection to the pool, when finished.
+-- | Use a connection from the pool to run a session and return the connection
+-- to the pool, when finished.
+-- 
+-- Session failing with a 'Session.ClientError' get interpreted as a loss of
+-- connection. In such case the connection does not get returned to the pool
+-- and a slot gets freed up for a new connection to be established the next
+-- time one is needed. The error still gets returned from this function.
 use :: Pool -> Session.Session a -> IO (Either UsageError a)
 use Pool {..} sess =
   join . atomically $ do
@@ -99,3 +95,13 @@ use Pool {..} sess =
           atomically $ do
             alive <- readTVar poolAlive
             when alive $ writeTQueue poolConnectionQueue conn
+
+-- |
+-- A union over the connection establishment error and the session error.
+data UsageError
+  = ConnectionUsageError Connection.ConnectionError
+  | SessionUsageError Session.QueryError
+  | PoolIsReleasedUsageError
+  deriving (Show, Eq)
+
+instance Exception UsageError
