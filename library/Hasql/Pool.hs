@@ -1,10 +1,11 @@
 module Hasql.Pool
-  ( -- * --
+  ( -- * Pool
     Pool,
     acquire,
     release,
     use,
-    -- * --
+
+    -- * Errors
     UsageError (..),
   )
 where
@@ -29,6 +30,9 @@ data Pool = Pool
   }
 
 -- | Given the pool-size and connection settings create a connection-pool.
+--
+-- No connections actually get established by this function. It is delegated
+-- to 'use'.
 acquire :: Int -> Connection.Settings -> IO Pool
 acquire poolSize connectionSettings = do
   Pool connectionSettings
@@ -36,8 +40,7 @@ acquire poolSize connectionSettings = do
     <*> newTVarIO poolSize
     <*> newTVarIO True
 
--- |
--- Release all the connections in the pool.
+-- | Release all the connections in the pool.
 release :: Pool -> IO ()
 release Pool {..} = do
   connections <- atomically $ do
@@ -47,7 +50,7 @@ release Pool {..} = do
 
 -- | Use a connection from the pool to run a session and return the connection
 -- to the pool, when finished.
--- 
+--
 -- Session failing with a 'Session.ClientError' get interpreted as a loss of
 -- connection. In such case the connection does not get returned to the pool
 -- and a slot gets freed up for a new connection to be established the next
