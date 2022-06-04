@@ -16,8 +16,7 @@ import Hasql.Pool.Prelude
 import Hasql.Session (Session)
 import qualified Hasql.Session as Session
 
--- |
--- A pool of connections to DB.
+-- | A pool of connections to DB.
 data Pool = Pool
   { -- | Connection settings.
     poolConnectionSettings :: Connection.Settings,
@@ -51,7 +50,7 @@ release Pool {..} = do
 -- | Use a connection from the pool to run a session and return the connection
 -- to the pool, when finished.
 --
--- Session failing with a 'Session.ClientError' get interpreted as a loss of
+-- Session failing with a 'Session.ClientError' gets interpreted as a loss of
 -- connection. In such case the connection does not get returned to the pool
 -- and a slot gets freed up for a new connection to be established the next
 -- time one is needed. The error still gets returned from this function.
@@ -101,12 +100,14 @@ use Pool {..} sess =
               then writeTQueue poolConnectionQueue conn $> return ()
               else return $ Connection.release conn
 
--- |
--- A union over the connection establishment error and the session error.
+-- | Union over all errors that 'use' can result in.
 data UsageError
-  = ConnectionUsageError Connection.ConnectionError
-  | SessionUsageError Session.QueryError
-  | PoolIsReleasedUsageError
+  = -- | Attempt to establish a connection failed.
+    ConnectionUsageError Connection.ConnectionError
+  | -- | Session execution failed.
+    SessionUsageError Session.QueryError
+  | -- | Attempt to use a pool, which has already been called 'release' upon.
+    PoolIsReleasedUsageError
   deriving (Show, Eq)
 
 instance Exception UsageError
