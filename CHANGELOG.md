@@ -1,3 +1,7 @@
+# 0.7.2
+
+Added support for dynamic connection configuration ([issue #11](https://github.com/nikita-volkov/hasql-pool/issues/11)).
+
 # 0.7.1.2
 
 Fixed connections not being released if they were in use during the call to `release`.

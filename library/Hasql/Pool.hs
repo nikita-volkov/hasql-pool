@@ -2,6 +2,7 @@ module Hasql.Pool
   ( -- * Pool
     Pool,
     acquire,
+    acquireDynamically,
     release,
     use,
 
@@ -19,7 +20,7 @@ import qualified Hasql.Session as Session
 -- | A pool of connections to DB.
 data Pool = Pool
   { -- | Connection settings.
-    poolConnectionSettings :: Connection.Settings,
+    poolFetchConnectionSettings :: IO Connection.Settings,
     -- | Avail connections.
     poolConnectionQueue :: TQueue Connection,
     -- | Capacity.
@@ -33,8 +34,20 @@ data Pool = Pool
 -- No connections actually get established by this function. It is delegated
 -- to 'use'.
 acquire :: Int -> Connection.Settings -> IO Pool
-acquire poolSize connectionSettings = do
-  Pool connectionSettings
+acquire poolSize connectionSettings =
+  acquireDynamically poolSize (pure connectionSettings)
+
+-- | Given the pool-size and connection settings constructor action
+-- create a connection-pool.
+--
+-- No connections actually get established by this function. It is delegated
+-- to 'use'.
+--
+-- In difference to 'acquire' new settings get fetched each time a connection
+-- is created. This may be useful for some security models.
+acquireDynamically :: Int -> IO Connection.Settings -> IO Pool
+acquireDynamically poolSize fetchConnectionSettings = do
+  Pool fetchConnectionSettings
     <$> newTQueueIO
     <*> newTVarIO poolSize
     <*> newTVarIO True
@@ -73,7 +86,8 @@ use Pool {..} sess =
       else return . return . Left $ PoolIsReleasedUsageError
   where
     onNewConn = do
-      connRes <- Connection.acquire poolConnectionSettings
+      settings <- poolFetchConnectionSettings
+      connRes <- Connection.acquire settings
       case connRes of
         Left connErr -> do
           atomically $ modifyTVar' poolCapacity succ
