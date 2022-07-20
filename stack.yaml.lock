@@ -3,10 +3,121 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/lock_files
 
-packages: []
+packages:
+- completed:
+    name: coalmine
+    pantry-tree:
+      sha256: 8896e428a656c392d25d499f9b024abd0c30459db09e8a78e1645bad43d4fb89
+      size: 9564
+    commit: a2857feca4d8a25bd868e0a4ff985b7ef4db6ec3
+    git: https://github.com/nikita-volkov/coalmine
+    version: 0.1.0.4
+  original:
+    commit: a2857feca4d8a25bd868e0a4ff985b7ef4db6ec3
+    git: https://github.com/nikita-volkov/coalmine
+- completed:
+    name: moore-machines
+    pantry-tree:
+      sha256: 3d1505067d5c8599e9843ed45ec2bc587fa5100c448f558ca5db2c97fb55706f
+      size: 887
+    commit: 7e95c33b203a1cfe42dbc0e0de3cec8e6fe94290
+    git: https://github.com/nikita-volkov/moore-machines
+    version: '0.1'
+  original:
+    commit: 7e95c33b203a1cfe42dbc0e0de3cec8e6fe94290
+    git: https://github.com/nikita-volkov/moore-machines
+- completed:
+    name: structure-kit
+    pantry-tree:
+      sha256: b7779ebe935d65c0b4f6e3ea8b5f5011abdabf362b1673826545c93625e050ad
+      size: 3500
+    commit: 46ffb6527c48f8a718adecd21a313f0b1ba5e81c
+    git: https://github.com/nikita-volkov/structure-kit
+    version: 0.1.0.1
+  original:
+    commit: 46ffb6527c48f8a718adecd21a313f0b1ba5e81c
+    git: https://github.com/nikita-volkov/structure-kit
+- completed:
+    name: canapi
+    pantry-tree:
+      sha256: 54c44986c3d7f8daa4464e4e097f312dc3ac0c02f7eb5fbb8bba3a6e6d19487a
+      size: 1319
+    commit: 02f1d9ffea90522a3a0968305793a7f507c7da59
+    git: https://github.com/nikita-volkov/canapi
+    version: '0.1'
+  original:
+    commit: 02f1d9ffea90522a3a0968305793a7f507c7da59
+    git: https://github.com/nikita-volkov/canapi
+- completed:
+    name: lean-http-client
+    pantry-tree:
+      sha256: 64da0f3390166969e2fe6a140d847c315258f9bcb8fcaf3169fd78b4b25b6f6f
+      size: 544
+    commit: 52343895df1e5ae49159b8c5f76a50ac438216b1
+    git: https://github.com/nikita-volkov/lean-http-client
+    version: '0.1'
+  original:
+    commit: 52343895df1e5ae49159b8c5f76a50ac438216b1
+    git: https://github.com/nikita-volkov/lean-http-client
+- completed:
+    name: distillery
+    pantry-tree:
+      sha256: 03d32965a35914b68bdaa149db48ce66e774783360f5b7d8b18db72de61b7baf
+      size: 524
+    commit: 2c2905f2addb0d1925c43d427fcf65340ee64b2a
+    git: https://github.com/nikita-volkov/distillery
+    version: '0.1'
+  original:
+    commit: 2c2905f2addb0d1925c43d427fcf65340ee64b2a
+    git: https://github.com/nikita-volkov/distillery
+- completed:
+    name: acquire
+    pantry-tree:
+      sha256: e194150d070a0e4f07e5f2285e82f177312f328c7490f3a659f361b4f6324d00
+      size: 438
+    commit: 75194757308ae9340b0e2eda46d8db4d25af7516
+    git: https://github.com/metrix-ai/acquire
+    version: 0.3.1
+  original:
+    commit: 75194757308ae9340b0e2eda46d8db4d25af7516
+    git: https://github.com/metrix-ai/acquire
+- completed:
+    pantry-tree:
+      sha256: 520aa5f59b55c14d27115a801f499f940a563849b0c54876bcd6be41f6450713
+      size: 456
+    hackage: cereal-data-dword-0.1.1@sha256:a3fa6dfafaeeb3774c5888dfa601d561ce05b0af66f52859970247e58135d47e,1381
+  original:
+    hackage: cereal-data-dword-0.1.1
+- completed:
+    pantry-tree:
+      sha256: f2fd5281b8fcea2ffa1f323feca1c84d030914dfec18f61e52be8a60d6939037
+      size: 2622
+    hackage: hasql-1.6@sha256:78f5fd9e732862cbffb06123015866312bf6f3889c18508018820536490a8460,6624
+  original:
+    hackage: hasql-1.6
+- completed:
+    pantry-tree:
+      sha256: 946dbffdad0a92dbdeeaaabb1c7ac2451f3002561407068543fcd860cd860f15
+      size: 473
+    hackage: punycode-2.0@sha256:dce7f481b5eedc750cf49d21a80b839cb366afd2d29bc506acca5ad9d0c06a8f,1503
+  original:
+    hackage: punycode-2.0
+- completed:
+    pantry-tree:
+      sha256: 51dc0ab22269973eec829ae476fb3102cfe155ffde2fd1d039dedf65c7842031
+      size: 509
+    hackage: timestamp-0.2@sha256:103fe49ce206922d3b14d57d8aff25eaf03c70fef5fcdaeaeb8416aaee163e51,1598
+  original:
+    hackage: timestamp-0.2
 snapshots:
 - completed:
-    sha256: c92a0359aa608c8528e0a6a3f952e7b8501c7fac946b8b0e037125e1ab271423
-    size: 590824
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/nightly/2022/5/31.yaml
-  original: nightly-2022-05-31
+    sha256: a4a05670f8e2a2bc108aca4e093c57eb82f562afd6949f299b0116861444f6f6
+    size: 887
+    url: https://raw.githubusercontent.com/nikita-volkov/stack-snapshot/f55bfe4e3f2bd73ffa6d9255ea20ab31a993661c/snapshot.yaml
+  original:
+    url: https://raw.githubusercontent.com/nikita-volkov/stack-snapshot/f55bfe4e3f2bd73ffa6d9255ea20ab31a993661c/snapshot.yaml
+- completed:
+    sha256: 6a7d84094bf948100b933f83f8cff586a41633d59cb1adbb89eefc25405fabe8
+    size: 616794
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/nightly/2022/7/16.yaml
+  original: nightly-2022-07-16
