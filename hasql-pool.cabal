@@ -43,9 +43,11 @@ test-suite test
   type: exitcode-stdio-1.0
   hs-source-dirs: test
   main-is: Main.hs
+  ghc-options: -threaded
   build-depends:
     hasql,
     hasql-pool,
+    async,
     hspec >=2.6 && <3,
     rerebase >=1.15 && <2,
     stm >=2.5 && <3,

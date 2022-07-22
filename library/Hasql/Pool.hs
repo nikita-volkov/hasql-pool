@@ -23,6 +23,8 @@ data ReuseConnection = Keep | Close
 data Pool = Pool
   { -- | Connection settings.
     poolFetchConnectionSettings :: IO Connection.Settings,
+    -- | Acquisition timeout, in microseconds.
+    poolAcquisitionTimeout :: Maybe Int,
     -- | Avail connections.
     poolConnectionQueue :: TQueue Connection,
     -- | Remaining capacity.
@@ -38,9 +40,9 @@ data Pool = Pool
 --
 -- No connections actually get established by this function. It is delegated
 -- to 'use'.
-acquire :: Int -> Connection.Settings -> IO Pool
-acquire poolSize connectionSettings =
-  acquireDynamically poolSize (pure connectionSettings)
+acquire :: Int -> Maybe Int -> Connection.Settings -> IO Pool
+acquire poolSize timeout connectionSettings =
+  acquireDynamically poolSize timeout (pure connectionSettings)
 
 -- | Given the pool-size and connection settings constructor action
 -- create a connection-pool.
@@ -50,9 +52,9 @@ acquire poolSize connectionSettings =
 --
 -- In difference to 'acquire' new settings get fetched each time a connection
 -- is created. This may be useful for some security models.
-acquireDynamically :: Int -> IO Connection.Settings -> IO Pool
-acquireDynamically poolSize fetchConnectionSettings = do
-  Pool fetchConnectionSettings
+acquireDynamically :: Int -> Maybe Int -> IO Connection.Settings -> IO Pool
+acquireDynamically poolSize timeout fetchConnectionSettings = do
+  Pool fetchConnectionSettings timeout
     <$> newTQueueIO
     <*> newTVarIO poolSize
     <*> (newTVarIO =<< newTVarIO Keep)
@@ -79,7 +81,13 @@ release Pool {..} =
 -- and a slot gets freed up for a new connection to be established the next
 -- time one is needed. The error still gets returned from this function.
 use :: Pool -> Session.Session a -> IO (Either UsageError a)
-use Pool {..} sess =
+use Pool {..} sess = do
+  timeout <- case poolAcquisitionTimeout of
+    Just delta -> do
+      delay <- registerDelay delta
+      return $ readTVar delay
+    Nothing ->
+      return $ return False
   join . atomically $ do
     reuseToggle <- readTVar poolReuseToggle
     asum
@@ -90,7 +98,12 @@ use Pool {..} sess =
             then do
               writeTVar poolCapacity $! pred capVal
               return $ onNewConn reuseToggle
-            else retry
+            else retry,
+          do
+            timedOut <- timeout
+            if timedOut
+              then return . return . Left $ AcquisitionTimeout
+              else retry
       ]
   where
     onNewConn reuseToggle = do
@@ -130,6 +143,8 @@ data UsageError
     ConnectionUsageError Connection.ConnectionError
   | -- | Session execution failed.
     SessionUsageError Session.QueryError
+  | -- | Timeout acquiring a connection.
+    AcquisitionTimeout
   deriving (Show, Eq)
 
 instance Exception UsageError
