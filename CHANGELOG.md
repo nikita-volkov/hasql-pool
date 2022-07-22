@@ -1,5 +1,6 @@
 # Unreleased (PostgREST fork)
 
+Added support for timing out resource acquisition ([PR #](https://github.com/PostgREST/hasql-pool/pull/3)).
 Added support for flushing the pool without destroying it ([PR #2](https://github.com/PostgREST/hasql-pool/pull/2)).
 
 # 0.7.2

@@ -10,29 +10,30 @@ import Test.Hspec
 import Prelude
 import qualified System.Environment
 import qualified Data.ByteString.Char8 as B8
+import Control.Concurrent.Async (race)
 
 main = do
   connectionSettings <- getConnectionSettings
   hspec $ describe "" $ do
     it "Releases a spot in the pool when there is a query error" $ do
-      pool <- acquire 1 connectionSettings
+      pool <- acquire 1 Nothing connectionSettings
       use pool badQuerySession `shouldNotReturn` (Right ())
       use pool selectOneSession `shouldReturn` (Right 1)
     it "Simulation of connection error works" $ do
-      pool <- acquire 3 connectionSettings
+      pool <- acquire 3 Nothing connectionSettings
       res <- use pool $ closeConnSession >> selectOneSession
       shouldSatisfy res $ \case
         Left (SessionUsageError (Session.QueryError _ _ (Session.ClientError _))) -> True
         _ -> False
     it "Connection errors cause eviction of connection" $ do
-      pool <- acquire 3 connectionSettings
+      pool <- acquire 3 Nothing connectionSettings
       res <- use pool $ closeConnSession >> selectOneSession
       res <- use pool $ closeConnSession >> selectOneSession
       res <- use pool $ closeConnSession >> selectOneSession
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
     it "Connection gets returned to the pool after normal use" $ do
-      pool <- acquire 3 connectionSettings
+      pool <- acquire 3 Nothing connectionSettings
       res <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
@@ -40,7 +41,7 @@ main = do
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
     it "Connection gets returned to the pool after non-connection error" $ do
-      pool <- acquire 3 connectionSettings
+      pool <- acquire 3 Nothing connectionSettings
       res <- use pool $ badQuerySession
       res <- use pool $ badQuerySession
       res <- use pool $ badQuerySession
@@ -48,7 +49,7 @@ main = do
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
     it "Getting and setting session variables works" $ do
-      pool <- acquire 1 connectionSettings
+      pool <- acquire 1 Nothing connectionSettings
       res <- use pool $ getSettingSession "testing.foo"
       res `shouldBe` Right Nothing
       res <- use pool $ do
@@ -56,24 +57,38 @@ main = do
         getSettingSession "testing.foo"
       res `shouldBe` Right (Just "hello world")
     it "Session variables stay set when a connection gets reused" $ do
-      pool <- acquire 1 connectionSettings
+      pool <- acquire 1 Nothing connectionSettings
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       res2 <- use pool $ getSettingSession "testing.foo"
       res2 `shouldBe` Right (Just "hello world")
     it "Flushing the pool resets session variables" $ do
-      pool <- acquire 1 connectionSettings
+      pool <- acquire 1 Nothing connectionSettings
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       flush pool
       res <- use pool $ getSettingSession "testing.foo"
       res `shouldBe` Right Nothing
     it "Flushing a released pool leaves it dead" $ do
-      pool <- acquire 1 connectionSettings
+      pool <- acquire 1 Nothing connectionSettings
       release pool
       flush pool
       res <- use pool $ selectOneSession
       res `shouldBe` Left PoolIsReleasedUsageError
+    it "Times out connection acquisition" $ do
+      pool <- acquire 1 (Just 1000) connectionSettings -- 1ms timeout
+      sleeping <- newEmptyMVar
+      t0 <- getCurrentTime
+      res <- race
+        (use pool $ liftIO $ do
+           putMVar sleeping ()
+           threadDelay 1000000) -- 1s
+        (do
+           takeMVar sleeping
+           use pool $ selectOneSession)
+      t1 <- getCurrentTime
+      res `shouldBe` Right (Left AcquisitionTimeout)
+      diffUTCTime t1 t0 `shouldSatisfy` (< 0.5) -- 0.5s
 
 getConnectionSettings :: IO Connection.Settings
 getConnectionSettings = B8.unwords . catMaybes <$> sequence
