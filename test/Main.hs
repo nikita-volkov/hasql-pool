@@ -58,6 +58,19 @@ main = hspec $ do
       res `shouldBe` Right ()
       res2 <- use pool $ getSettingSession "testing.foo"
       res2 `shouldBe` Right (Just "hello world")
+    it "Flushing the pool resets session variables" $ do
+      pool <- acquire 1 connectionSettings
+      res <- use pool $ setSettingSession "testing.foo" "hello world"
+      res `shouldBe` Right ()
+      flush pool
+      res <- use pool $ getSettingSession "testing.foo"
+      res `shouldBe` Right Nothing
+    it "Flushing a released pool leaves it dead" $ do
+      pool <- acquire 1 connectionSettings
+      release pool
+      flush pool
+      res <- use pool $ selectOneSession
+      res `shouldBe` Left PoolIsReleasedUsageError
 
 connectionSettings :: Connection.Settings
 connectionSettings =
