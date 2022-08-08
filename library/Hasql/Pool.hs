@@ -23,7 +23,10 @@ data Pool = Pool
     poolFetchConnectionSettings :: IO Connection.Settings,
     -- | Avail connections.
     poolConnectionQueue :: TQueue Connection,
-    -- | Capacity.
+    -- | Remaining capacity.
+    -- The pool size limits the sum of poolCapacity, the length
+    -- of length poolConnectionQueue and the number of in-flight
+    -- connections.
     poolCapacity :: TVar Int,
     -- | Alive.
     poolAlive :: TVar Bool
@@ -52,7 +55,9 @@ acquireDynamically poolSize fetchConnectionSettings = do
     <*> newTVarIO poolSize
     <*> newTVarIO True
 
--- | Release all the connections in the pool.
+-- | Release all the idle connections in the pool and mark the pool as dead.
+-- In-use connections will survive this and be closed once they would be returned
+-- to the pool.
 release :: Pool -> IO ()
 release Pool {..} = do
   connections <- atomically $ do
