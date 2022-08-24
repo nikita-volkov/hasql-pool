@@ -13,7 +13,6 @@ import qualified Data.ByteString.Char8 as B8
 
 main = do
   connectionSettings <- getConnectionSettings
-  putStrLn $ show connectionSettings
   hspec $ describe "" $ do
     it "Releases a spot in the pool when there is a query error" $ do
       pool <- acquire 1 connectionSettings
