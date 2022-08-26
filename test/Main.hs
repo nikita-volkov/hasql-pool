@@ -60,7 +60,7 @@ badQuerySession :: Session.Session ()
 badQuerySession =
   Session.statement () statement
   where
-    statement = Statement.Statement "" Encoders.noParams Decoders.noResult True
+    statement = Statement.Statement "zzz" Encoders.noParams Decoders.noResult True
 
 closeConnSession :: Session.Session ()
 closeConnSession = do
