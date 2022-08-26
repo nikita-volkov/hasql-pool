@@ -1,3 +1,7 @@
+# Unreleased (PostgREST fork)
+
+Added support for flushing the pool without destroying it ([PR #2](https://github.com/PostgREST/hasql-pool/pull/2)).
+
 # 0.7.2
 
 Added support for dynamic connection configuration ([issue #11](https://github.com/nikita-volkov/hasql-pool/issues/11)).

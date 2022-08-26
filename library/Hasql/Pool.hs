@@ -3,6 +3,7 @@ module Hasql.Pool
     Pool,
     acquire,
     acquireDynamically,
+    flush,
     release,
     use,
 
@@ -23,10 +24,16 @@ data Pool = Pool
     poolFetchConnectionSettings :: IO Connection.Settings,
     -- | Avail connections.
     poolConnectionQueue :: TQueue Connection,
-    -- | Capacity.
+    -- | Remaining capacity.
+    -- The pool size limits the sum of poolCapacity, the length
+    -- of length poolConnectionQueue and the number of in-flight
+    -- connections.
     poolCapacity :: TVar Int,
-    -- | Alive.
-    poolAlive :: TVar Bool
+    -- | Liveness state of the current generation.
+    -- The pool as a whole is alive if the current generation is alive,
+    -- while a connection is returned to the pool if the generation it
+    -- was acquired in is still alive.
+    poolAlive :: TVar (TVar Bool)
   }
 
 -- | Given the pool-size and connection settings create a connection-pool.
@@ -50,15 +57,35 @@ acquireDynamically poolSize fetchConnectionSettings = do
   Pool fetchConnectionSettings
     <$> newTQueueIO
     <*> newTVarIO poolSize
-    <*> newTVarIO True
+    <*> (newTVarIO =<< newTVarIO True)
 
--- | Release all the connections in the pool.
+-- | Release all the idle connections in the pool and mark the pool as dead.
+-- In-use connections will survive this and be closed once they would be returned
+-- to the pool.
 release :: Pool -> IO ()
 release Pool {..} = do
   connections <- atomically $ do
-    writeTVar poolAlive False
+    alive <- readTVar poolAlive
+    writeTVar alive False
     flushTQueue poolConnectionQueue
   forM_ connections Connection.release
+
+-- | Flush the pool, so that using the pool doesn't reuse any connection from
+-- before the call. Release all the idle connections in the pool, and mark
+-- in-use connections to be closed once they would be returned.
+flush :: Pool -> IO ()
+flush Pool {..} =
+  join . atomically $ do
+    prevAlive <- readTVar poolAlive
+    alive <- readTVar prevAlive
+    if alive
+      then do
+        writeTVar prevAlive False
+        writeTVar poolAlive =<< newTVar True
+        conns <- flushTQueue poolConnectionQueue
+        modifyTVar' poolCapacity (+ (length conns))
+        return $ forM_ conns Connection.release
+      else return (return ())
 
 -- | Use a connection from the pool to run a session and return the connection
 -- to the pool, when finished.
@@ -70,30 +97,31 @@ release Pool {..} = do
 use :: Pool -> Session.Session a -> IO (Either UsageError a)
 use Pool {..} sess =
   join . atomically $ do
-    alive <- readTVar poolAlive
+    aliveVar <- readTVar poolAlive
+    alive <- readTVar aliveVar
     if alive
-      then
+      then do
         asum
-          [ readTQueue poolConnectionQueue <&> onConn,
+          [ readTQueue poolConnectionQueue <&> onConn aliveVar,
             do
               capVal <- readTVar poolCapacity
               if capVal > 0
                 then do
                   writeTVar poolCapacity $! pred capVal
-                  return onNewConn
+                  return $ onNewConn aliveVar
                 else retry
           ]
       else return . return . Left $ PoolIsReleasedUsageError
   where
-    onNewConn = do
+    onNewConn aliveVar = do
       settings <- poolFetchConnectionSettings
       connRes <- Connection.acquire settings
       case connRes of
         Left connErr -> do
           atomically $ modifyTVar' poolCapacity succ
           return $ Left $ ConnectionUsageError connErr
-        Right conn -> onConn conn
-    onConn conn = do
+        Right conn -> onConn aliveVar conn
+    onConn aliveVar conn = do
       sessRes <- Session.run sess conn
       case sessRes of
         Left err -> case err of
@@ -109,10 +137,12 @@ use Pool {..} sess =
       where
         returnConn =
           join . atomically $ do
-            alive <- readTVar poolAlive
+            alive <- readTVar aliveVar
             if alive
               then writeTQueue poolConnectionQueue conn $> return ()
-              else return $ Connection.release conn
+              else do
+                modifyTVar' poolCapacity succ
+                return $ Connection.release conn
 
 -- | Union over all errors that 'use' can result in.
 data UsageError
