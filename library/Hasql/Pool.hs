@@ -138,7 +138,7 @@ data UsageError
 
 -- | Use a connection from the pool to run a session and return the connection
 -- to the pool, when finished. If the session fails
--- with 'Session.ClientError' the connection gets reestablished.
+-- with 'Session.ClientError' the connection will eventually get reestablished.
 use :: Pool -> Session.Session a -> IO (Either UsageError a)
 use (Pool connectionSettings establishedQueue slotsAvailVar aliveVar) session =
   join $
@@ -158,7 +158,6 @@ use (Pool connectionSettings establishedQueue slotsAvailVar aliveVar) session =
                   writeTVar slotsAvailVar $! pred slotsAvail
                   return acquireConnectionThenUseThenPutItToQueue
                 else -- Wait until the state changes and retry.
-
                   retry
             Just (ActiveConnection _ connection) ->
               return (useConnectionThenPutItToQueue connection)
