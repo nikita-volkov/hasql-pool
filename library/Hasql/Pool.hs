@@ -16,7 +16,7 @@ import Hasql.Session (Session)
 import qualified Hasql.Session as Session
 
 -- |
--- A pool of connections to DB.
+-- Pool of connections to DB.
 data Pool
   = Pool
       Connection.Settings
