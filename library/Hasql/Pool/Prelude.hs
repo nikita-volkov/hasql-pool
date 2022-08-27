@@ -84,7 +84,7 @@ import Prelude as Exports hiding (all, and, any, concat, concatMap, elem, fail, 
 
 getMillisecondsSinceEpoch :: IO Int
 getMillisecondsSinceEpoch =
-  fmap (fromIntegral . systemTimeToMicros) getSystemTime
+  fmap systemTimeToMillis getSystemTime
   where
-    systemTimeToMicros (MkSystemTime s ns) =
-      s * 1000 + fromIntegral (div ns 1000000)
+    systemTimeToMillis (MkSystemTime s ns) =
+      fromIntegral s * 1000 + fromIntegral (div ns 1000000)
