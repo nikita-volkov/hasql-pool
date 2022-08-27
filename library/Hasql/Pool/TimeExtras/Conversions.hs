@@ -1,4 +1,4 @@
-module Hasql.Pool.Time.Conversions where
+module Hasql.Pool.TimeExtras.Conversions where
 
 import Hasql.Pool.Prelude
 
