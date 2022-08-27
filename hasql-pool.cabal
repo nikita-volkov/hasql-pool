@@ -29,6 +29,8 @@ library
     Hasql.Pool
   other-modules:
     Hasql.Pool.Prelude
+    Hasql.Pool.TimeExtras.IO
+    Hasql.Pool.TimeExtras.Conversions
   build-depends:
     base >=4.11 && <5,
     hasql >=1.6.0.1 && <1.7,

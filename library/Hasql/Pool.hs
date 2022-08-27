@@ -11,6 +11,7 @@ where
 import Hasql.Connection (Connection)
 import qualified Hasql.Connection as Connection
 import Hasql.Pool.Prelude
+import qualified Hasql.Pool.TimeExtras.IO as TimeExtrasIO
 import Hasql.Session (Session)
 import qualified Hasql.Session as Session
 
@@ -38,7 +39,7 @@ loopCollectingGarbage timeout establishedQueue slotsAvailVar aliveVar =
   where
     decide =
       do
-        ts <- getMillisecondsSinceEpoch
+        ts <- TimeExtrasIO.getMillisecondsSinceEpoch
         join $
           atomically $ do
             alive <- readTVar aliveVar
@@ -86,7 +87,7 @@ loopCollectingGarbage timeout establishedQueue slotsAvailVar aliveVar =
                 return (release (fmap activeConnectionConnection list))
     sleep untilTs =
       do
-        ts <- getMillisecondsSinceEpoch
+        ts <- TimeExtrasIO.getMillisecondsSinceEpoch
         let diff =
               untilTs - ts
          in if diff > 0
@@ -192,7 +193,7 @@ use (Pool connectionSettings establishedQueue slotsAvailVar aliveVar) session =
             return (Right res)
     putConnectionToPool connection =
       do
-        ts <- getMillisecondsSinceEpoch
+        ts <- TimeExtrasIO.getMillisecondsSinceEpoch
         atomically $ writeTQueue establishedQueue (ActiveConnection ts connection)
     releaseConnection connection =
       do
