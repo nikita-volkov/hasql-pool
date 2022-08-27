@@ -21,19 +21,20 @@ data Pool
   = Pool
       Connection.Settings
       -- ^ Connection settings.
-      (TQueue ActiveConnection)
+      (TQueue AvailConn)
       -- ^ Queue of established connections.
       (TVar Int)
       -- ^ Slots available for establishing new connections.
       (TVar Bool)
       -- ^ Flag signaling whether pool's alive.
 
-data ActiveConnection = ActiveConnection
-  { activeConnectionLastUseTimestamp :: Int,
-    activeConnectionConnection :: Connection
+-- | Available connection.
+data AvailConn = AvailConn
+  { availConnLastUseTimestamp :: Int,
+    availConnConnection :: Connection
   }
 
-loopCollectingGarbage :: Int -> TQueue ActiveConnection -> TVar Int -> TVar Bool -> IO ()
+loopCollectingGarbage :: Int -> TQueue AvailConn -> TVar Int -> TVar Bool -> IO ()
 loopCollectingGarbage timeout establishedQueue slotsAvailVar aliveVar =
   decide
   where
@@ -50,7 +51,7 @@ loopCollectingGarbage timeout establishedQueue slotsAvailVar aliveVar =
                         -- The queue is empty. Just wait for changes in the state.
                         Nothing ->
                           retry
-                        Just entry@(ActiveConnection lastUseTs connection) ->
+                        Just entry@(AvailConn lastUseTs connection) ->
                           let outdatingTs =
                                 lastUseTs + timeout
                            in -- Check whether it's outdated.
@@ -69,7 +70,7 @@ loopCollectingGarbage timeout establishedQueue slotsAvailVar aliveVar =
                       tryReadTQueue establishedQueue >>= \case
                         Nothing ->
                           finalizeAndRelease slotsAvail outdatedList outdatingTs
-                        Just entry@(ActiveConnection lastUseTs connection) ->
+                        Just entry@(AvailConn lastUseTs connection) ->
                           let outdatingTs =
                                 lastUseTs + timeout
                            in if outdatingTs < ts
@@ -84,7 +85,7 @@ loopCollectingGarbage timeout establishedQueue slotsAvailVar aliveVar =
                  in tryToRelease
               else do
                 list <- flushTQueue establishedQueue
-                return (release (fmap activeConnectionConnection list))
+                return (release (fmap availConnConnection list))
     sleep untilTs =
       do
         ts <- TimeExtrasIO.getMillisecondsSinceEpoch
@@ -160,7 +161,7 @@ use (Pool connectionSettings establishedQueue slotsAvailVar aliveVar) session =
                   return acquireConnectionThenUseThenPutItToQueue
                 else -- Wait until the state changes and retry.
                   retry
-            Just (ActiveConnection _ connection) ->
+            Just (AvailConn _ connection) ->
               return (useConnectionThenPutItToQueue connection)
         else return (return (Left PoolIsReleasedUsageError))
   where
@@ -194,7 +195,7 @@ use (Pool connectionSettings establishedQueue slotsAvailVar aliveVar) session =
     putConnectionToPool connection =
       do
         ts <- TimeExtrasIO.getMillisecondsSinceEpoch
-        atomically $ writeTQueue establishedQueue (ActiveConnection ts connection)
+        atomically $ writeTQueue establishedQueue (AvailConn ts connection)
     releaseConnection connection =
       do
         atomically $ modifyTVar' slotsAvailVar succ
