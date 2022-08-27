@@ -1,6 +1,5 @@
 module Hasql.Pool.Prelude
   ( module Exports,
-    getMillisecondsSinceEpoch,
   )
 where
 
@@ -81,10 +80,3 @@ import Text.Printf as Exports (hPrintf, printf)
 import Text.Read as Exports (Read (..), readEither, readMaybe)
 import Unsafe.Coerce as Exports
 import Prelude as Exports hiding (all, and, any, concat, concatMap, elem, fail, foldl, foldl1, foldr, foldr1, id, mapM, mapM_, maximum, minimum, notElem, or, product, sequence, sequence_, sum, (.))
-
-getMillisecondsSinceEpoch :: IO Int
-getMillisecondsSinceEpoch =
-  fmap systemTimeToMillis getSystemTime
-  where
-    systemTimeToMillis (MkSystemTime s ns) =
-      fromIntegral s * 1000 + fromIntegral (div ns 1000000)
