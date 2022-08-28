@@ -82,9 +82,12 @@ acquire (size, timeout, connectionSettings) =
 -- Release all connections in the pool.
 -- Connections currently in use will get released right after the use.
 release :: Pool -> IO ()
-release (Pool _ _ _ lastReleaseVar) = do
+release (Pool _ activeSlotsQueue _ lastReleaseVar) = do
   ts <- TimeExtrasIO.getMillisecondsSinceEpoch
-  atomically (writeTVar lastReleaseVar ts)
+  activeSlots <- atomically $ do
+    writeTVar lastReleaseVar ts
+    flushTQueue activeSlotsQueue
+  forM_ activeSlots $ Connection.release . activeSlotConnection
 
 -- |
 -- Union over the connection establishment error and the session error.
