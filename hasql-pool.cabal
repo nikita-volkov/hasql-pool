@@ -30,6 +30,7 @@ library
   other-modules:
     Hasql.Pool.EntryQueue
     Hasql.Pool.Prelude
+    Hasql.Pool.SlotCounter
     Hasql.Pool.TimeExtras.IO
     Hasql.Pool.TimeExtras.Conversions
   build-depends:
