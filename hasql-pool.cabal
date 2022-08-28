@@ -28,6 +28,7 @@ library
   exposed-modules:
     Hasql.Pool
   other-modules:
+    Hasql.Pool.EntryQueue
     Hasql.Pool.Prelude
     Hasql.Pool.TimeExtras.IO
     Hasql.Pool.TimeExtras.Conversions
