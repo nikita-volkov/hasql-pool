@@ -1,15 +1,13 @@
 module Hasql.Pool.EntryQueue where
 
 import Hasql.Pool.Prelude
+import qualified Hasql.Pool.SlotCounter as SlotCounter
 
 data EntryQueue entry
   = EntryQueue
-      Int
-      -- ^ Slots in total.
       (TQueue entry)
       -- ^ Queue of established connections.
-      (TVar Int)
-      -- ^ Slots available for establishing new connections.
+      SlotCounter.SlotCounter
 
 -- | Result of 'fetch'.
 data FetchResult entry
@@ -18,25 +16,21 @@ data FetchResult entry
   | VacantAndEmptyFetchResult
 
 fetch :: EntryQueue a -> STM (FetchResult a)
-fetch (EntryQueue slotsInTotal queue slotsAvailVar) =
+fetch (EntryQueue queue counter) =
   tryReadTQueue queue >>= \case
-    Just entry -> do
+    Just entry ->
       return $ ExistingEntryFetchResult entry
     Nothing -> do
-      slotsAvail <- readTVar slotsAvailVar
-      if slotsAvail <= 0
-        then retry
-        else do
-          writeTVar slotsAvailVar $! pred slotsAvail
-          return $
-            if slotsAvail == slotsInTotal
-              then VacantAndEmptyFetchResult
-              else VacantFetchResult
+      fresh <- SlotCounter.dec counter
+      return $
+        if fresh
+          then VacantAndEmptyFetchResult
+          else VacantFetchResult
 
 registerEntry :: EntryQueue a -> a -> STM ()
-registerEntry (EntryQueue _ queue _) entry =
+registerEntry (EntryQueue queue _) entry =
   writeTQueue queue entry
 
-releaseSlot :: EntryQueue a -> STM ()
-releaseSlot (EntryQueue _ _ slotsAvailVar) =
-  modifyTVar' slotsAvailVar succ
+releaseSlot :: EntryQueue a -> STM Bool
+releaseSlot (EntryQueue _ counter) =
+  SlotCounter.inc counter
