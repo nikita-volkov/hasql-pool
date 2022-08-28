@@ -1,7 +1,7 @@
-module Hasql.Pool.TimeExtras.IO where
+module TimeExtras.IO where
 
-import Hasql.Pool.Prelude
-import Hasql.Pool.TimeExtras.Conversions
+import PowerPrelude
+import TimeExtras.Conversions
 
 getMillisecondsSinceEpoch :: IO Int
 getMillisecondsSinceEpoch =

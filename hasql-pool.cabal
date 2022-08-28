@@ -29,16 +29,31 @@ library
     Hasql.Pool
   other-modules:
     Hasql.Pool.BoundedCounter
-    Hasql.Pool.Prelude
     Hasql.Pool.Slots
-    Hasql.Pool.TimeExtras.IO
-    Hasql.Pool.TimeExtras.Conversions
+  build-depends:
+    hasql >=1.6.0.1 && <1.7,
+    power-prelude,
+    time-extras,
+
+library power-prelude
+  import: base-settings
+  hs-source-dirs: power-prelude
+  exposed-modules:
+    PowerPrelude
   build-depends:
     base >=4.11 && <5,
-    hasql >=1.6.0.1 && <1.7,
     stm >=2.5 && <3,
     time >=1.5 && <2,
     transformers >=0.5 && <0.7,
+
+library time-extras
+  import: base-settings
+  hs-source-dirs: time-extras
+  exposed-modules:
+    TimeExtras.IO
+    TimeExtras.Conversions
+  build-depends:
+    power-prelude,
 
 test-suite test
   import: base-settings

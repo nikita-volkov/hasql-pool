@@ -1,4 +1,4 @@
-module Hasql.Pool.Prelude
+module PowerPrelude
   ( module Exports,
   )
 where

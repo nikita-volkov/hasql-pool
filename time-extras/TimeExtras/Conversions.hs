@@ -1,6 +1,6 @@
-module Hasql.Pool.TimeExtras.Conversions where
+module TimeExtras.Conversions where
 
-import Hasql.Pool.Prelude
+import PowerPrelude
 
 class ToMilliseconds a where
   toMilliseconds :: a -> Int

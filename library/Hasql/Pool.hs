@@ -10,12 +10,12 @@ where
 
 import Hasql.Connection (Connection)
 import qualified Hasql.Connection as Connection
-import Hasql.Pool.Prelude
 import Hasql.Pool.Slots (Slots)
 import qualified Hasql.Pool.Slots as Slots
-import qualified Hasql.Pool.TimeExtras.IO as TimeExtrasIO
 import Hasql.Session (Session)
 import qualified Hasql.Session as Session
+import PowerPrelude
+import qualified TimeExtras.IO as TimeExtrasIO
 
 -- |
 -- Pool of connections to DB.

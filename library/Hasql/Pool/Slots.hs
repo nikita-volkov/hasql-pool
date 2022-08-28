@@ -11,7 +11,7 @@ module Hasql.Pool.Slots
 where
 
 import qualified Hasql.Pool.BoundedCounter as BoundedCounter
-import Hasql.Pool.Prelude
+import PowerPrelude
 
 data Slots slot
   = Slots

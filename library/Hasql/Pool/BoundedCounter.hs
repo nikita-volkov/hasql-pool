@@ -6,7 +6,7 @@ module Hasql.Pool.BoundedCounter
   )
 where
 
-import Hasql.Pool.Prelude
+import PowerPrelude
 
 data BoundedCounter
   = BoundedCounter
