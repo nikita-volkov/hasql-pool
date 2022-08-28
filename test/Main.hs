@@ -12,24 +12,24 @@ import Prelude
 main = hspec $ do
   describe "" $ do
     it "Releases a spot in the pool when there is a query error" $ do
-      pool <- acquire (1, 1, connectionSettings)
+      pool <- acquire (Settings 1 1 connectionSettings)
       use pool badQuerySession `shouldNotReturn` (Right ())
       use pool selectOneSession `shouldReturn` (Right 1)
     it "Simulation of connection error works" $ do
-      pool <- acquire (3, 1, connectionSettings)
+      pool <- acquire (Settings 3 1 connectionSettings)
       res <- use pool $ closeConnSession >> selectOneSession
       shouldSatisfy res $ \case
         Left (SessionUsageError (Session.QueryError _ _ (Session.ClientError _))) -> True
         _ -> False
     it "Connection errors cause eviction of connection" $ do
-      pool <- acquire (3, 1, connectionSettings)
+      pool <- acquire (Settings 3 1 connectionSettings)
       res <- use pool $ closeConnSession >> selectOneSession
       res <- use pool $ closeConnSession >> selectOneSession
       res <- use pool $ closeConnSession >> selectOneSession
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
     it "Connection gets returned to the pool after normal use" $ do
-      pool <- acquire (3, 1, connectionSettings)
+      pool <- acquire (Settings 3 1 connectionSettings)
       res <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
@@ -37,7 +37,7 @@ main = hspec $ do
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
     it "Connection gets returned to the pool after non-connection error" $ do
-      pool <- acquire (3, 1, connectionSettings)
+      pool <- acquire (Settings 3 1 connectionSettings)
       res <- use pool $ badQuerySession
       res <- use pool $ badQuerySession
       res <- use pool $ badQuerySession

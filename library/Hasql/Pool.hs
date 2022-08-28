@@ -8,63 +8,47 @@ module Hasql.Pool
   )
 where
 
-import Hasql.Connection (Connection)
+import qualified GenericPool
 import qualified Hasql.Connection as Connection
-import Hasql.Pool.Slots (Slots)
-import qualified Hasql.Pool.Slots as Slots
-import Hasql.Session (Session)
 import qualified Hasql.Session as Session
 import PowerPrelude
-import qualified TimeExtras.IO as TimeExtrasIO
 
 -- |
 -- Pool of connections to DB.
-data Pool = Pool
-  { -- | Connection timeout.
-    poolTimeout :: Int,
-    -- | Queue of established connections.
-    poolConnectionSettings :: Connection.Settings,
-    -- | Connection settings.
-    poolSlots :: Slots ActiveSlot,
-    -- | Timestamp of the last release. Checked by connections in use to determine, whether they should be released.
-    poolReleaseTimestamp :: TVar Int
-  }
+newtype Pool = Pool (GenericPool.Pool Connection.ConnectionError Connection.Connection)
 
--- | Available connection.
-data ActiveSlot = ActiveSlot
-  { activeSlotLastUseTimestamp :: Int,
-    activeSlotConnection :: Connection
-  }
-
--- |
--- Settings of the connection pool. Consist of:
---
--- * Pool-size.
---
--- * Timeout.
--- An amount of time in milliseconds for which the unused connections are kept open.
---
--- * Connection settings.
-type Settings =
-  (Int, Int, Connection.Settings)
+-- |  Settings of the connection pool.
+data Settings
+  = Settings
+      Int
+      -- ^ Pool-size.
+      Int
+      -- ^ Timeout.
+      -- An amount of time in milliseconds for which the unused connections are kept open.
+      Connection.Settings
+      -- ^ Connection settings.
 
 -- |
 -- Given the pool-size, timeout and connection settings
 -- create a connection-pool.
 acquire :: Settings -> IO Pool
-acquire (size, timeout, connectionSettings) =
-  atomically $ Pool timeout connectionSettings <$> Slots.new size <*> newTVar 0
+acquire (Settings size timeout connectionSettings) =
+  fmap Pool $
+    GenericPool.acquire
+      size
+      timeout
+      (Connection.acquire connectionSettings)
+      Connection.release
 
 -- |
 -- Release all connections in the pool.
--- Connections currently in use will get released right after the use.
+-- Connections currently in use will get released right after finishing being used.
+--
+-- It is ok to use the pool after releasing.
+-- In such case this function effectively resets all connections.
 release :: Pool -> IO ()
-release (Pool _ _ slots lastReleaseVar) = do
-  ts <- TimeExtrasIO.getMillisecondsSinceEpoch
-  activeSlots <- atomically $ do
-    writeTVar lastReleaseVar ts
-    Slots.fetchAll slots
-  forM_ activeSlots $ Connection.release . activeSlotConnection
+release (Pool pool) =
+  GenericPool.release pool
 
 -- |
 -- Union over the connection establishment error and the session error.
@@ -79,75 +63,14 @@ data UsageError
 -- to the pool, when finished. If the session fails
 -- with 'Session.ClientError' the connection will eventually get reestablished.
 use :: Pool -> Session.Session a -> IO (Either UsageError a)
-use (Pool timeout connectionSettings slots lastReleaseVar) session =
-  join . atomically $
-    Slots.fetch slots >>= \case
-      Slots.RegisteredSlotFetchResult (ActiveSlot lastUseTs connection) ->
-        return $ useConnectionThenRegister lastUseTs connection
-      Slots.VacantAndEmptyFetchResult ->
-        return $ do
-          res <- acquireConnectionThenUseThenRegister session
-          void $ forkIO collectGarbage
-          return res
-      Slots.VacantFetchResult ->
-        return $ acquireConnectionThenUseThenRegister session
+use (Pool pool) session =
+  fmap repackResult $ GenericPool.use pool handler
   where
-    acquireConnectionThenUseThenRegister session =
-      Connection.acquire connectionSettings >>= \case
-        -- Failed to acquire, so release an availability slot,
-        -- returning the error details.
-        Left acquisitionError -> do
-          atomically $ Slots.makeAvail slots
-          return (Left (ConnectionUsageError acquisitionError))
-        Right connection -> do
-          ts <- TimeExtrasIO.getMillisecondsSinceEpoch
-          useConnectionThenRegister ts connection
-
-    useConnectionThenRegister lastUseTs connection =
-      Session.run session connection >>= \case
-        Left queryError -> do
-          -- Check whether the error is on client-side,
-          -- and in that case release the connection.
-          case queryError of
-            Session.QueryError _ _ (Session.ClientError _) ->
-              closeConnection connection
-            _ ->
-              registerConnection lastUseTs connection
-          return (Left (SessionUsageError queryError))
-        Right res -> do
-          registerConnection lastUseTs connection
-          return (Right res)
-
-    registerConnection lastUseTs connection = do
-      lastReleaseTs <- readTVarIO lastReleaseVar
-      if lastReleaseTs >= lastUseTs
-        then closeConnection connection
-        else do
-          ts <- TimeExtrasIO.getMillisecondsSinceEpoch
-          atomically $ Slots.occupy slots (ActiveSlot ts connection)
-
-    closeConnection connection = do
-      atomically $ Slots.makeAvail slots
-      Connection.release connection
-
-    collectGarbage = do
-      ts <- TimeExtrasIO.getMillisecondsSinceEpoch
-      let minTs = ts - timeout
-      join . atomically $ do
-        Slots.fetch slots >>= \case
-          Slots.RegisteredSlotFetchResult (ActiveSlot lastUseTs connection) ->
-            if lastUseTs <= minTs
-              then do
-                Slots.makeAvail slots
-                return $ do
-                  Connection.release connection
-                  collectGarbage
-              else do
-                Slots.release slots $ ActiveSlot lastUseTs connection
-                return $ do
-                  TimeExtrasIO.sleepUntilInMilliseconds $ lastUseTs + timeout
-                  collectGarbage
-          Slots.VacantFetchResult -> retry
-          Slots.VacantAndEmptyFetchResult -> do
-            Slots.makeAvail slots
-            return $ return ()
+    handler connection =
+      Session.run session connection <&> \res -> (res, resIsDrop res)
+      where
+        resIsDrop = \case
+          Left (Session.QueryError _ _ (Session.ClientError _)) -> True
+          _ -> False
+    repackResult =
+      either (Left . ConnectionUsageError) (either (Left . SessionUsageError) Right)

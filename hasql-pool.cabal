@@ -27,13 +27,10 @@ library
   hs-source-dirs: library
   exposed-modules:
     Hasql.Pool
-  other-modules:
-    Hasql.Pool.Slots
   build-depends:
-    bounded-counter,
+    generic-pool,
     hasql >=1.6.0.1 && <1.7,
     power-prelude,
-    time-extras,
 
 library power-prelude
   import: base-settings

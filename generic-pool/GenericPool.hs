@@ -10,13 +10,10 @@ import qualified BoundedCounter
 import PowerPrelude
 import qualified TimeExtras.IO as TimeExtrasIO
 
--- | Pool of connections to DB.
 data Pool acqErr handle = Pool
-  { -- | Connection poolTimeout.
-    poolTimeout :: Int,
+  { poolTimeout :: Int,
     poolCreator :: IO (Either acqErr handle),
     poolDestroyer :: handle -> IO (),
-    -- | Queue of established connections.
     poolSlotsQueue :: TQueue (Slot handle),
     poolSlotsTakenCounter :: BoundedCounter.BoundedCounter,
     -- | Timestamp of the last release. Checked by connections in use to determine, whether they should be released.
@@ -30,16 +27,13 @@ data Slot handle = Slot
   }
 
 acquire :: Int -> Int -> IO (Either acqErr handle) -> (handle -> IO ()) -> IO (Pool acqErr handle)
-acquire timeout size creator destroyer =
+acquire size timeout creator destroyer =
   atomically $
     Pool timeout creator destroyer
       <$> newTQueue
       <*> BoundedCounter.create size
       <*> newTVar 0
 
--- |
--- Release all connections in the pool.
--- Connections currently in use will get released right after the use.
 release :: Pool acqErr handle -> IO ()
 release Pool {..} = do
   ts <- TimeExtrasIO.getMillisecondsSinceEpoch
