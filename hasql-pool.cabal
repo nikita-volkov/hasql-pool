@@ -29,8 +29,8 @@ library
     Hasql.Pool
   other-modules:
     Hasql.Pool.BoundedCounter
-    Hasql.Pool.EntryQueue
     Hasql.Pool.Prelude
+    Hasql.Pool.Slots
     Hasql.Pool.TimeExtras.IO
     Hasql.Pool.TimeExtras.Conversions
   build-depends:
