@@ -11,30 +11,28 @@ import Hasql.Pool.Prelude
 data BoundedCounter
   = BoundedCounter
       Int
-      -- ^ Slots in total.
+      -- ^ Maximum.
       (TVar Int)
-      -- ^ Slots available for establishing new connections.
+      -- ^ Counter.
 
 new :: Int -> STM BoundedCounter
-new total =
-  BoundedCounter total <$> newTVar total
+new maximum =
+  BoundedCounter maximum <$> newTVar 0
 
--- | Signals whether we're starting fresh.
 dec :: BoundedCounter -> STM Bool
-dec (BoundedCounter slotsInTotal slotsAvailVar) = do
-  slotsAvail <- readTVar slotsAvailVar
-  if slotsAvail <= 0
+dec (BoundedCounter maximum countVar) = do
+  count <- readTVar countVar
+  if count <= 0
     then retry
     else do
-      writeTVar slotsAvailVar $! pred slotsAvail
-      return $ slotsAvail == slotsInTotal
+      writeTVar countVar $! pred count
+      return $ count == maximum
 
--- | Signals whether we were full.
 inc :: BoundedCounter -> STM Bool
-inc (BoundedCounter slotsInTotal slotsAvailVar) = do
-  slotsAvail <- readTVar slotsAvailVar
-  if slotsAvail == slotsInTotal
+inc (BoundedCounter maximum countVar) = do
+  count <- readTVar countVar
+  if count == maximum
     then retry
     else do
-      writeTVar slotsAvailVar $! succ slotsAvail
-      return $ slotsAvail == 0
+      writeTVar countVar $! succ count
+      return $ count == 0
