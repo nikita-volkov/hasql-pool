@@ -1,5 +1,5 @@
-module Hasql.Pool.SlotCounter
-  ( SlotCounter,
+module Hasql.Pool.BoundedCounter
+  ( BoundedCounter,
     new,
     dec,
     inc,
@@ -8,20 +8,20 @@ where
 
 import Hasql.Pool.Prelude
 
-data SlotCounter
-  = SlotCounter
+data BoundedCounter
+  = BoundedCounter
       Int
       -- ^ Slots in total.
       (TVar Int)
       -- ^ Slots available for establishing new connections.
 
-new :: Int -> STM SlotCounter
+new :: Int -> STM BoundedCounter
 new total =
-  SlotCounter total <$> newTVar total
+  BoundedCounter total <$> newTVar total
 
 -- | Signals whether we're starting fresh.
-dec :: SlotCounter -> STM Bool
-dec (SlotCounter slotsInTotal slotsAvailVar) = do
+dec :: BoundedCounter -> STM Bool
+dec (BoundedCounter slotsInTotal slotsAvailVar) = do
   slotsAvail <- readTVar slotsAvailVar
   if slotsAvail <= 0
     then retry
@@ -30,8 +30,8 @@ dec (SlotCounter slotsInTotal slotsAvailVar) = do
       return $ slotsAvail == slotsInTotal
 
 -- | Signals whether we were full.
-inc :: SlotCounter -> STM Bool
-inc (SlotCounter slotsInTotal slotsAvailVar) = do
+inc :: BoundedCounter -> STM Bool
+inc (BoundedCounter slotsInTotal slotsAvailVar) = do
   slotsAvail <- readTVar slotsAvailVar
   if slotsAvail == slotsInTotal
     then retry

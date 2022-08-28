@@ -1,13 +1,13 @@
 module Hasql.Pool.EntryQueue where
 
+import qualified Hasql.Pool.BoundedCounter as BoundedCounter
 import Hasql.Pool.Prelude
-import qualified Hasql.Pool.SlotCounter as SlotCounter
 
 data EntryQueue entry
   = EntryQueue
       (TQueue entry)
       -- ^ Queue of established connections.
-      SlotCounter.SlotCounter
+      BoundedCounter.BoundedCounter
 
 -- | Result of 'fetch'.
 data FetchResult entry
@@ -21,7 +21,7 @@ fetch (EntryQueue queue counter) =
     Just entry ->
       return $ ExistingEntryFetchResult entry
     Nothing -> do
-      fresh <- SlotCounter.dec counter
+      fresh <- BoundedCounter.dec counter
       return $
         if fresh
           then VacantAndEmptyFetchResult
@@ -33,4 +33,4 @@ registerEntry (EntryQueue queue _) entry =
 
 releaseSlot :: EntryQueue a -> STM Bool
 releaseSlot (EntryQueue _ counter) =
-  SlotCounter.inc counter
+  BoundedCounter.inc counter
