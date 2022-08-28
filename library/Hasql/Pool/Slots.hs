@@ -3,8 +3,10 @@ module Hasql.Pool.Slots
     new,
     FetchResult (..),
     fetch,
-    allocate,
+    fetchAll,
+    occupy,
     release,
+    makeAvail,
   )
 where
 
@@ -22,19 +24,27 @@ new size =
 
 -- | Result of 'fetch'.
 data FetchResult slot
-  = AllocatedSlotFetchResult slot
+  = RegisteredSlotFetchResult slot
   | VacantFetchResult
   | VacantAndEmptyFetchResult
 
-fetch :: Slots a -> STM (FetchResult a)
-fetch (Slots queue counter) =
-  AllocatedSlotFetchResult <$> readTQueue queue
-    <|> bool VacantFetchResult VacantAndEmptyFetchResult <$> BoundedCounter.inc counter
-
-allocate :: Slots a -> a -> STM ()
-allocate (Slots queue _) slot =
+occupy :: Slots a -> a -> STM ()
+occupy (Slots queue _) slot =
   writeTQueue queue slot
 
-release :: Slots a -> STM Bool
-release (Slots _ counter) =
+fetch :: Slots a -> STM (FetchResult a)
+fetch (Slots queue counter) =
+  RegisteredSlotFetchResult <$> readTQueue queue
+    <|> bool VacantFetchResult VacantAndEmptyFetchResult <$> BoundedCounter.inc counter
+
+fetchAll :: Slots a -> STM [a]
+fetchAll (Slots queue counter) =
+  error "TODO"
+
+release :: Slots a -> a -> STM ()
+release (Slots queue _) slot =
+  unGetTQueue queue slot
+
+makeAvail :: Slots a -> STM Bool
+makeAvail (Slots _ counter) =
   BoundedCounter.dec counter
