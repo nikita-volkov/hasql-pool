@@ -34,25 +34,36 @@ data ActiveSlot = ActiveSlot
     activeSlotConnection :: Connection
   }
 
-loopCollectingGarbage :: Int -> TQueue ActiveSlot -> TVar Int -> IO ()
-loopCollectingGarbage timeout activeSlotsQueue slotsAvailVar = go
+startCollectingGarbage :: Int -> Int -> TQueue ActiveSlot -> TVar Int -> IO ()
+startCollectingGarbage timeout slotsInTotal activeSlotsQueue slotsAvailVar =
+  void $ forkIO go
   where
     go = do
       ts <- TimeExtrasIO.getMillisecondsSinceEpoch
       let minTs = ts - timeout
       join . atomically $ do
-        ActiveSlot lastUseTs connection <- readTQueue activeSlotsQueue
-        if lastUseTs <= minTs
-          then do
-            modifyTVar' slotsAvailVar succ
-            return $ do
-              Connection.release connection
-              go
-          else do
-            unGetTQueue activeSlotsQueue $ ActiveSlot lastUseTs connection
-            return $ do
-              TimeExtrasIO.sleepUntilInMilliseconds $ lastUseTs + timeout
-              go
+        tryReadTQueue activeSlotsQueue >>= \case
+          Just (ActiveSlot lastUseTs connection) ->
+            if lastUseTs <= minTs
+              then do
+                modifyTVar' slotsAvailVar succ
+                return $ do
+                  Connection.release connection
+                  go
+              else do
+                unGetTQueue activeSlotsQueue $ ActiveSlot lastUseTs connection
+                return $ do
+                  TimeExtrasIO.sleepUntilInMilliseconds $ lastUseTs + timeout
+                  go
+          -- Established connections queue is empty.
+          -- Let's check whether the slots avail is the same as slots in total,
+          -- in which case it means that there are no connections in use,
+          -- so we can stop the loop.
+          Nothing -> do
+            slotsAvail <- readTVar slotsAvailVar
+            if slotsAvail == slotsInTotal
+              then return $ return ()
+              else retry
 
 -- |
 -- Settings of the connection pool. Consist of:
@@ -75,7 +86,6 @@ acquire (size, timeout, connectionSettings) =
     establishedQueue <- newTQueueIO
     slotsAvailVar <- newTVarIO size
     lastReleaseVar <- newTVarIO 0
-    forkIO $ loopCollectingGarbage timeout establishedQueue slotsAvailVar
     return (Pool connectionSettings establishedQueue slotsAvailVar lastReleaseVar)
 
 -- |
