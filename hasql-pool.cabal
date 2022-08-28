@@ -63,6 +63,16 @@ library bounded-counter
   build-depends:
     power-prelude,
 
+library generic-pool
+  import: base-settings
+  hs-source-dirs: generic-pool
+  exposed-modules:
+    GenericPool
+  build-depends:
+    bounded-counter,
+    power-prelude,
+    time-extras,
+
 test-suite test
   import: base-settings
   type: exitcode-stdio-1.0
