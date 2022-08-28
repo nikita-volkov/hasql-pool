@@ -20,7 +20,7 @@ data Slots slot
 
 new :: Int -> STM (Slots a)
 new size =
-  Slots <$> newTQueue <*> BoundedCounter.new size
+  Slots <$> newTQueue <*> BoundedCounter.create size
 
 -- | Result of 'fetch'.
 data FetchResult slot

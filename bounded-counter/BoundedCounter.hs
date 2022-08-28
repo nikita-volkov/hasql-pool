@@ -1,8 +1,9 @@
 module BoundedCounter
   ( BoundedCounter,
-    new,
+    create,
     dec,
     inc,
+    isEmpty,
   )
 where
 
@@ -15,8 +16,8 @@ data BoundedCounter
       (TVar Int)
       -- ^ Counter.
 
-new :: Int -> STM BoundedCounter
-new maximum =
+create :: Int -> STM BoundedCounter
+create maximum =
   BoundedCounter maximum <$> newTVar 0
 
 dec :: BoundedCounter -> STM Bool
@@ -36,3 +37,8 @@ inc (BoundedCounter maximum countVar) = do
     else do
       writeTVar countVar $! succ count
       return $ count == 0
+
+isEmpty :: BoundedCounter -> STM Bool
+isEmpty (BoundedCounter _ countVar) = do
+  count <- readTVar countVar
+  return $ count == 0
