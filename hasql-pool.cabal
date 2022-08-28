@@ -28,9 +28,9 @@ library
   exposed-modules:
     Hasql.Pool
   other-modules:
-    Hasql.Pool.BoundedCounter
     Hasql.Pool.Slots
   build-depends:
+    bounded-counter,
     hasql >=1.6.0.1 && <1.7,
     power-prelude,
     time-extras,
@@ -52,6 +52,14 @@ library time-extras
   exposed-modules:
     TimeExtras.IO
     TimeExtras.Conversions
+  build-depends:
+    power-prelude,
+
+library bounded-counter
+  import: base-settings
+  hs-source-dirs: bounded-counter
+  exposed-modules:
+    BoundedCounter
   build-depends:
     power-prelude,
 

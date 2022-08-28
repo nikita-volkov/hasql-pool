@@ -1,4 +1,4 @@
-module Hasql.Pool.BoundedCounter
+module BoundedCounter
   ( BoundedCounter,
     new,
     dec,
