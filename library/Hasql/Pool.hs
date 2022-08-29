@@ -3,7 +3,6 @@ module Hasql.Pool
     Pool,
     acquire,
     acquireDynamically,
-    flush,
     release,
     use,
 
@@ -59,33 +58,18 @@ acquireDynamically poolSize fetchConnectionSettings = do
     <*> newTVarIO poolSize
     <*> (newTVarIO =<< newTVarIO True)
 
--- | Release all the idle connections in the pool and mark the pool as dead.
--- In-use connections will survive this and be closed once they would be returned
--- to the pool.
+-- | Release all the idle connections in the pool, and mark the in-use connections
+-- to be released on return. Any connections acquired after the call will be
+-- newly established.
 release :: Pool -> IO ()
-release Pool {..} = do
-  connections <- atomically $ do
-    alive <- readTVar poolAlive
-    writeTVar alive False
-    flushTQueue poolConnectionQueue
-  forM_ connections Connection.release
-
--- | Flush the pool, so that using the pool doesn't reuse any connection from
--- before the call. Release all the idle connections in the pool, and mark
--- in-use connections to be closed once they would be returned.
-flush :: Pool -> IO ()
-flush Pool {..} =
+release Pool {..} =
   join . atomically $ do
     prevAlive <- readTVar poolAlive
-    alive <- readTVar prevAlive
-    if alive
-      then do
-        writeTVar prevAlive False
-        writeTVar poolAlive =<< newTVar True
-        conns <- flushTQueue poolConnectionQueue
-        modifyTVar' poolCapacity (+ (length conns))
-        return $ forM_ conns Connection.release
-      else return (return ())
+    writeTVar prevAlive False
+    writeTVar poolAlive =<< newTVar True
+    conns <- flushTQueue poolConnectionQueue
+    modifyTVar' poolCapacity (+ (length conns))
+    return $ forM_ conns Connection.release
 
 -- | Use a connection from the pool to run a session and return the connection
 -- to the pool, when finished.
@@ -98,20 +82,16 @@ use :: Pool -> Session.Session a -> IO (Either UsageError a)
 use Pool {..} sess =
   join . atomically $ do
     aliveVar <- readTVar poolAlive
-    alive <- readTVar aliveVar
-    if alive
-      then do
-        asum
-          [ readTQueue poolConnectionQueue <&> onConn aliveVar,
-            do
-              capVal <- readTVar poolCapacity
-              if capVal > 0
-                then do
-                  writeTVar poolCapacity $! pred capVal
-                  return $ onNewConn aliveVar
-                else retry
-          ]
-      else return . return . Left $ PoolIsReleasedUsageError
+    asum
+      [ readTQueue poolConnectionQueue <&> onConn aliveVar,
+        do
+          capVal <- readTVar poolCapacity
+          if capVal > 0
+            then do
+              writeTVar poolCapacity $! pred capVal
+              return $ onNewConn aliveVar
+            else retry
+      ]
   where
     onNewConn aliveVar = do
       settings <- poolFetchConnectionSettings
@@ -150,8 +130,6 @@ data UsageError
     ConnectionUsageError Connection.ConnectionError
   | -- | Session execution failed.
     SessionUsageError Session.QueryError
-  | -- | Attempt to use a pool, which has already been called 'release' upon.
-    PoolIsReleasedUsageError
   deriving (Show, Eq)
 
 instance Exception UsageError
