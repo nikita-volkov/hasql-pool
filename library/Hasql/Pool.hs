@@ -19,7 +19,7 @@ import qualified Hasql.Session as Session
 
 data ReuseConnection = Keep | Close
 
--- | A pool of connections to DB.
+-- | Pool of connections to DB.
 data Pool = Pool
   { -- | Connection settings.
     poolFetchConnectionSettings :: IO Connection.Settings,
@@ -63,7 +63,7 @@ acquireDynamically ::
   Int ->
   -- | Connection acquisition timeout.
   Maybe Int ->
-  -- | Action fetching connection settings settings.
+  -- | Action fetching connection settings.
   IO Connection.Settings ->
   IO Pool
 acquireDynamically poolSize timeout fetchConnectionSettings = do
