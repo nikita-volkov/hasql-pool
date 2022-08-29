@@ -47,6 +47,33 @@ main = do
       res <- use pool $ badQuerySession
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
+    it "The pool remains usable after release" $ do
+      pool <- acquire 1 connectionSettings
+      res <- use pool $ selectOneSession
+      release pool
+      res <- use pool $ selectOneSession
+      shouldSatisfy res $ isRight
+    it "Getting and setting session variables works" $ do
+      pool <- acquire 1 connectionSettings
+      res <- use pool $ getSettingSession "testing.foo"
+      res `shouldBe` Right Nothing
+      res <- use pool $ do
+        setSettingSession "testing.foo" "hello world"
+        getSettingSession "testing.foo"
+      res `shouldBe` Right (Just "hello world")
+    it "Session variables stay set when a connection gets reused" $ do
+      pool <- acquire 1 connectionSettings
+      res <- use pool $ setSettingSession "testing.foo" "hello world"
+      res `shouldBe` Right ()
+      res2 <- use pool $ getSettingSession "testing.foo"
+      res2 `shouldBe` Right (Just "hello world")
+    it "Releasing the pool resets session variables" $ do
+      pool <- acquire 1 connectionSettings
+      res <- use pool $ setSettingSession "testing.foo" "hello world"
+      res `shouldBe` Right ()
+      release pool
+      res <- use pool $ getSettingSession "testing.foo"
+      res `shouldBe` Right Nothing
 
 getConnectionSettings :: IO Connection.Settings
 getConnectionSettings =
@@ -82,3 +109,20 @@ closeConnSession :: Session.Session ()
 closeConnSession = do
   conn <- ask
   liftIO $ Connection.release conn
+
+setSettingSession :: Text -> Text -> Session.Session ()
+setSettingSession name value = do
+  Session.statement (name, value) statement
+  where
+    statement = Statement.Statement "SELECT set_config($1, $2, false)" encoder Decoders.noResult True
+    encoder =
+      contramap fst (Encoders.param (Encoders.nonNullable Encoders.text))
+        <> contramap snd (Encoders.param (Encoders.nonNullable Encoders.text))
+
+getSettingSession :: Text -> Session.Session (Maybe Text)
+getSettingSession name = do
+  Session.statement name statement
+  where
+    statement = Statement.Statement "SELECT current_setting($1, true)" encoder decoder True
+    encoder = Encoders.param (Encoders.nonNullable Encoders.text)
+    decoder = Decoders.singleRow (Decoders.column (Decoders.nullable Decoders.text))

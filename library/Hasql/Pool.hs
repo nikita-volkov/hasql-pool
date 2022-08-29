@@ -17,16 +17,21 @@ import Hasql.Pool.Prelude
 import Hasql.Session (Session)
 import qualified Hasql.Session as Session
 
+data ReuseConnection = Keep | Close
+
 -- | A pool of connections to DB.
 data Pool = Pool
   { -- | Connection settings.
     poolFetchConnectionSettings :: IO Connection.Settings,
     -- | Avail connections.
     poolConnectionQueue :: TQueue Connection,
-    -- | Capacity.
+    -- | Remaining capacity.
+    -- The pool size limits the sum of poolCapacity, the length
+    -- of length poolConnectionQueue and the number of in-flight
+    -- connections.
     poolCapacity :: TVar Int,
-    -- | Alive.
-    poolAlive :: TVar Bool
+    -- | Whether to return a connection to the pool.
+    poolReuseToggle :: TVar (TVar ReuseConnection)
   }
 
 -- | Given the pool-size and connection settings create a connection-pool.
@@ -50,15 +55,21 @@ acquireDynamically poolSize fetchConnectionSettings = do
   Pool fetchConnectionSettings
     <$> newTQueueIO
     <*> newTVarIO poolSize
-    <*> newTVarIO True
+    <*> (newTVarIO =<< newTVarIO Keep)
 
--- | Release all the connections in the pool.
+-- | Release all the idle connections in the pool, and mark the in-use connections
+-- to be released on return. Any connections acquired after the call will be
+-- newly established.
 release :: Pool -> IO ()
-release Pool {..} = do
-  connections <- atomically $ do
-    writeTVar poolAlive False
-    flushTQueue poolConnectionQueue
-  forM_ connections Connection.release
+release Pool {..} =
+  join . atomically $ do
+    prevReuseToggle <- readTVar poolReuseToggle
+    writeTVar prevReuseToggle Close
+    newReuseToggle <- newTVar Keep
+    writeTVar poolReuseToggle newReuseToggle
+    conns <- flushTQueue poolConnectionQueue
+    modifyTVar' poolCapacity (+ (length conns))
+    return $ forM_ conns Connection.release
 
 -- | Use a connection from the pool to run a session and return the connection
 -- to the pool, when finished.
@@ -70,30 +81,27 @@ release Pool {..} = do
 use :: Pool -> Session.Session a -> IO (Either UsageError a)
 use Pool {..} sess =
   join . atomically $ do
-    alive <- readTVar poolAlive
-    if alive
-      then
-        asum
-          [ readTQueue poolConnectionQueue <&> onConn,
-            do
-              capVal <- readTVar poolCapacity
-              if capVal > 0
-                then do
-                  writeTVar poolCapacity $! pred capVal
-                  return onNewConn
-                else retry
-          ]
-      else return . return . Left $ PoolIsReleasedUsageError
+    reuseToggle <- readTVar poolReuseToggle
+    asum
+      [ readTQueue poolConnectionQueue <&> onConn reuseToggle,
+        do
+          capVal <- readTVar poolCapacity
+          if capVal > 0
+            then do
+              writeTVar poolCapacity $! pred capVal
+              return $ onNewConn reuseToggle
+            else retry
+      ]
   where
-    onNewConn = do
+    onNewConn reuseToggle = do
       settings <- poolFetchConnectionSettings
       connRes <- Connection.acquire settings
       case connRes of
         Left connErr -> do
           atomically $ modifyTVar' poolCapacity succ
           return $ Left $ ConnectionUsageError connErr
-        Right conn -> onConn conn
-    onConn conn = do
+        Right conn -> onConn reuseToggle conn
+    onConn reuseToggle conn = do
       sessRes <- Session.run sess conn
       case sessRes of
         Left err -> case err of
@@ -109,10 +117,12 @@ use Pool {..} sess =
       where
         returnConn =
           join . atomically $ do
-            alive <- readTVar poolAlive
-            if alive
-              then writeTQueue poolConnectionQueue conn $> return ()
-              else return $ Connection.release conn
+            reuse <- readTVar reuseToggle
+            case reuse of
+              Keep -> writeTQueue poolConnectionQueue conn $> return ()
+              Close -> do
+                modifyTVar' poolCapacity succ
+                return $ Connection.release conn
 
 -- | Union over all errors that 'use' can result in.
 data UsageError
@@ -120,8 +130,6 @@ data UsageError
     ConnectionUsageError Connection.ConnectionError
   | -- | Session execution failed.
     SessionUsageError Session.QueryError
-  | -- | Attempt to use a pool, which has already been called 'release' upon.
-    PoolIsReleasedUsageError
   deriving (Show, Eq)
 
 instance Exception UsageError
