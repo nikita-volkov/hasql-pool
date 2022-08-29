@@ -36,23 +36,36 @@ data Pool = Pool
     poolReuseToggle :: TVar (TVar ReuseConnection)
   }
 
--- | Given the pool-size and connection settings create a connection-pool.
+-- | Create a connection-pool.
 --
 -- No connections actually get established by this function. It is delegated
 -- to 'use'.
-acquire :: Int -> Maybe Int -> Connection.Settings -> IO Pool
+acquire ::
+  -- | Pool size.
+  Int ->
+  -- | Connection acquisition timeout.
+  Maybe Int ->
+  -- | Connection settings.
+  Connection.Settings ->
+  IO Pool
 acquire poolSize timeout connectionSettings =
   acquireDynamically poolSize timeout (pure connectionSettings)
 
--- | Given the pool-size and connection settings constructor action
--- create a connection-pool.
---
--- No connections actually get established by this function. It is delegated
--- to 'use'.
+-- | Create a connection-pool.
 --
 -- In difference to 'acquire' new settings get fetched each time a connection
 -- is created. This may be useful for some security models.
-acquireDynamically :: Int -> Maybe Int -> IO Connection.Settings -> IO Pool
+--
+-- No connections actually get established by this function. It is delegated
+-- to 'use'.
+acquireDynamically ::
+  -- | Pool size.
+  Int ->
+  -- | Connection acquisition timeout.
+  Maybe Int ->
+  -- | Action fetching connection settings settings.
+  IO Connection.Settings ->
+  IO Pool
 acquireDynamically poolSize timeout fetchConnectionSettings = do
   Pool fetchConnectionSettings timeout
     <$> newTQueueIO
