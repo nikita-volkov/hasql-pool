@@ -1,3 +1,15 @@
+# 0.8
+
+`release` became reusable. You can use it to destroy the whole pool (same as before), but now also you can use it to reset the connections.
+
+Acquisition timeout added.
+
+Breaking changes in API:
+
+- Removed `PoolIsReleasedUsageError`
+- `acquire` extended with the acquisition timeout parameter
+- `acquireDynamically` extended with the acquisition timeout parameter
+
 # 0.7.2
 
 Added support for dynamic connection configuration ([issue #11](https://github.com/nikita-volkov/hasql-pool/issues/11)).
