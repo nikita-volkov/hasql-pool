@@ -1,5 +1,6 @@
 module Main where
 
+import Control.Concurrent.Async (race)
 import qualified Hasql.Connection as Connection
 import qualified Hasql.Decoders as Decoders
 import qualified Hasql.Encoders as Encoders
@@ -8,7 +9,6 @@ import qualified Hasql.Session as Session
 import qualified Hasql.Statement as Statement
 import Test.Hspec
 import Prelude
-import Control.Concurrent.Async (race)
 
 main = hspec $ do
   describe "" $ do
@@ -76,15 +76,19 @@ main = hspec $ do
       pool <- acquire 1 (Just 1000) connectionSettings -- 1ms timeout
       sleeping <- newEmptyMVar
       t0 <- getCurrentTime
-      res <- race
-        (use pool $ liftIO $ do
-           putMVar sleeping ()
-           threadDelay 1000000) -- 1s
-        (do
-           takeMVar sleeping
-           use pool $ selectOneSession)
+      res <-
+        race
+          ( use pool $
+              liftIO $ do
+                putMVar sleeping ()
+                threadDelay 1000000 -- 1s
+          )
+          ( do
+              takeMVar sleeping
+              use pool $ selectOneSession
+          )
       t1 <- getCurrentTime
-      res `shouldBe` Right (Left AcquisitionTimeout)
+      res `shouldBe` Right (Left AcquisitionTimeoutUsageError)
       diffUTCTime t1 t0 `shouldSatisfy` (< 0.5) -- 0.5s
 
 connectionSettings :: Connection.Settings

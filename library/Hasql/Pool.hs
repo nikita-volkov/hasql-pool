@@ -99,11 +99,11 @@ use Pool {..} sess = do
               writeTVar poolCapacity $! pred capVal
               return $ onNewConn reuseToggle
             else retry,
-          do
-            timedOut <- timeout
-            if timedOut
-              then return . return . Left $ AcquisitionTimeout
-              else retry
+        do
+          timedOut <- timeout
+          if timedOut
+            then return . return . Left $ AcquisitionTimeoutUsageError
+            else retry
       ]
   where
     onNewConn reuseToggle = do
@@ -144,7 +144,7 @@ data UsageError
   | -- | Session execution failed.
     SessionUsageError Session.QueryError
   | -- | Timeout acquiring a connection.
-    AcquisitionTimeout
+    AcquisitionTimeoutUsageError
   deriving (Show, Eq)
 
 instance Exception UsageError
