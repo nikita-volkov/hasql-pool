@@ -1,16 +1,19 @@
 module Main where
 
+import qualified Data.ByteString.Char8 as B8
 import qualified Hasql.Connection as Connection
 import qualified Hasql.Decoders as Decoders
 import qualified Hasql.Encoders as Encoders
 import Hasql.Pool
 import qualified Hasql.Session as Session
 import qualified Hasql.Statement as Statement
+import qualified System.Environment
 import Test.Hspec
 import Prelude
 
-main = hspec $ do
-  describe "" $ do
+main = do
+  connectionSettings <- getConnectionSettings
+  hspec . describe "" $ do
     it "Releases a spot in the pool when there is a query error" $ do
       pool <- acquire 1 connectionSettings
       use pool badQuerySession `shouldNotReturn` (Right ())
@@ -45,9 +48,22 @@ main = hspec $ do
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
 
-connectionSettings :: Connection.Settings
-connectionSettings =
-  "host=localhost port=5432 user=postgres dbname=postgres"
+getConnectionSettings :: IO Connection.Settings
+getConnectionSettings =
+  B8.unwords . catMaybes
+    <$> sequence
+      [ setting "host" $ defaultEnv "POSTGRES_HOST" "localhost",
+        setting "port" $ defaultEnv "POSTGRES_PORT" "5432",
+        setting "user" $ defaultEnv "POSTGRES_USER" "postgres",
+        setting "password" $ maybeEnv "POSTGRES_PASSWORD",
+        setting "dbname" $ defaultEnv "POSTGRES_DBNAME" "postgres"
+      ]
+  where
+    maybeEnv env = fmap B8.pack <$> System.Environment.lookupEnv env
+    defaultEnv env val = Just . fromMaybe val <$> maybeEnv env
+    setting label getEnv = do
+      val <- getEnv
+      return $ (\v -> label <> "=" <> v) <$> val
 
 selectOneSession :: Session.Session Int64
 selectOneSession =
