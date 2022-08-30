@@ -29,7 +29,7 @@ data Pool = Pool
     poolConnectionQueue :: TQueue Connection,
     -- | Remaining capacity.
     -- The pool size limits the sum of poolCapacity, the length
-    -- of length poolConnectionQueue and the number of in-flight
+    -- of poolConnectionQueue and the number of in-flight
     -- connections.
     poolCapacity :: TVar Int,
     -- | Whether to return a connection to the pool.

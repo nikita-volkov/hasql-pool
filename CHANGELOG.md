@@ -1,3 +1,7 @@
+# 0.8.0.2
+
+Fixed Windows build.
+
 # 0.8
 
 `release` became reusable. You can use it to destroy the whole pool (same as before), but now also you can use it to reset the connections.
