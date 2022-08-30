@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  build-test:
+  test-on-linux:
     strategy:
       matrix:
         ghc: ['8.10.7', '9.2.4']
@@ -59,7 +59,7 @@ jobs:
         export POSTGRES_PASSWORD=postgres
         cabal test all
 
-  build-windows:
+  test-on-windows:
     strategy:
       matrix:
         ghc: ['8.10.7', '9.2.4']
