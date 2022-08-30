@@ -69,6 +69,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+    - run: Add-Content $env:GITHUB_PATH $env:PGBIN
     - name: ghcup
       run: |
         ghcup install ghc ${{ matrix.ghc }}
