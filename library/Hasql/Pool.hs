@@ -17,8 +17,6 @@ import Hasql.Pool.Prelude
 import Hasql.Session (Session)
 import qualified Hasql.Session as Session
 
-data ReuseConnection = Keep | Close
-
 -- | Pool of connections to DB.
 data Pool = Pool
   { -- | Connection settings.
@@ -29,11 +27,11 @@ data Pool = Pool
     poolConnectionQueue :: TQueue Connection,
     -- | Remaining capacity.
     -- The pool size limits the sum of poolCapacity, the length
-    -- of length poolConnectionQueue and the number of in-flight
+    -- of poolConnectionQueue and the number of in-flight
     -- connections.
     poolCapacity :: TVar Int,
     -- | Whether to return a connection to the pool.
-    poolReuseToggle :: TVar (TVar ReuseConnection)
+    poolReuse :: TVar (TVar Bool)
   }
 
 -- | Create a connection-pool.
@@ -70,7 +68,7 @@ acquireDynamically poolSize timeout fetchConnectionSettings = do
   Pool fetchConnectionSettings timeout
     <$> newTQueueIO
     <*> newTVarIO poolSize
-    <*> (newTVarIO =<< newTVarIO Keep)
+    <*> (newTVarIO =<< newTVarIO True)
 
 -- | Release all the idle connections in the pool, and mark the in-use connections
 -- to be released on return. Any connections acquired after the call will be
@@ -78,10 +76,10 @@ acquireDynamically poolSize timeout fetchConnectionSettings = do
 release :: Pool -> IO ()
 release Pool {..} =
   join . atomically $ do
-    prevReuseToggle <- readTVar poolReuseToggle
-    writeTVar prevReuseToggle Close
-    newReuseToggle <- newTVar Keep
-    writeTVar poolReuseToggle newReuseToggle
+    prevReuse <- readTVar poolReuse
+    writeTVar prevReuse False
+    newReuse <- newTVar True
+    writeTVar poolReuse newReuse
     conns <- flushTQueue poolConnectionQueue
     modifyTVar' poolCapacity (+ (length conns))
     return $ forM_ conns Connection.release
@@ -102,15 +100,15 @@ use Pool {..} sess = do
     Nothing ->
       return $ return False
   join . atomically $ do
-    reuseToggle <- readTVar poolReuseToggle
+    reuseVar <- readTVar poolReuse
     asum
-      [ readTQueue poolConnectionQueue <&> onConn reuseToggle,
+      [ readTQueue poolConnectionQueue <&> onConn reuseVar,
         do
           capVal <- readTVar poolCapacity
           if capVal > 0
             then do
               writeTVar poolCapacity $! pred capVal
-              return $ onNewConn reuseToggle
+              return $ onNewConn reuseVar
             else retry,
         do
           timedOut <- timeout
@@ -119,15 +117,15 @@ use Pool {..} sess = do
             else retry
       ]
   where
-    onNewConn reuseToggle = do
+    onNewConn reuseVar = do
       settings <- poolFetchConnectionSettings
       connRes <- Connection.acquire settings
       case connRes of
         Left connErr -> do
           atomically $ modifyTVar' poolCapacity succ
           return $ Left $ ConnectionUsageError connErr
-        Right conn -> onConn reuseToggle conn
-    onConn reuseToggle conn = do
+        Right conn -> onConn reuseVar conn
+    onConn reuseVar conn = do
       sessRes <- Session.run sess conn
       case sessRes of
         Left err -> case err of
@@ -143,10 +141,10 @@ use Pool {..} sess = do
       where
         returnConn =
           join . atomically $ do
-            reuse <- readTVar reuseToggle
-            case reuse of
-              Keep -> writeTQueue poolConnectionQueue conn $> return ()
-              Close -> do
+            reuse <- readTVar reuseVar
+            if reuse
+              then writeTQueue poolConnectionQueue conn $> return ()
+              else do
                 modifyTVar' poolCapacity succ
                 return $ Connection.release conn
 
