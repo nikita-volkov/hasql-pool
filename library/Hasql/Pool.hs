@@ -41,7 +41,7 @@ data Pool = Pool
 acquire ::
   -- | Pool size.
   Int ->
-  -- | Connection acquisition timeout.
+  -- | Connection acquisition timeout in microseconds.
   Maybe Int ->
   -- | Connection settings.
   Connection.Settings ->
@@ -59,7 +59,7 @@ acquire poolSize timeout connectionSettings =
 acquireDynamically ::
   -- | Pool size.
   Int ->
-  -- | Connection acquisition timeout.
+  -- | Connection acquisition timeout in microseconds.
   Maybe Int ->
   -- | Action fetching connection settings.
   IO Connection.Settings ->
