@@ -71,8 +71,12 @@ acquireDynamically poolSize timeout fetchConnectionSettings = do
     <*> (newTVarIO =<< newTVarIO True)
 
 -- | Release all the idle connections in the pool, and mark the in-use connections
--- to be released on return. Any connections acquired after the call will be
--- newly established.
+-- to be released after use. Any connections acquired after the call will be
+-- freshly established.
+-- 
+-- The pool remains usable after this action.
+-- So you can use this function to reset the connections in the pool.
+-- Naturally, you can also use it to release the resources.
 release :: Pool -> IO ()
 release Pool {..} =
   join . atomically $ do
