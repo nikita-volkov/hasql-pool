@@ -129,19 +129,27 @@ use Pool {..} sess = do
           atomically $ modifyTVar' poolCapacity succ
           return $ Left $ ConnectionUsageError connErr
         Right conn -> onConn reuseVar conn
-    onConn reuseVar conn = do
-      sessRes <- Session.run sess conn
-      case sessRes of
-        Left err -> case err of
-          Session.QueryError _ _ (Session.ClientError _) -> do
-            atomically $ modifyTVar' poolCapacity succ
-            return $ Left $ SessionUsageError err
-          _ -> do
-            returnConn
-            return $ Left $ SessionUsageError err
-        Right res -> do
-          returnConn
-          return $ Right res
+    onConn reuseVar conn =
+      catch
+        (do
+          sessRes <-
+            Session.run sess conn
+            `catch` (\(e :: Session.QueryError) -> pure $ Left e)
+          case sessRes of
+            Left err -> case err of
+              Session.QueryError _ _ (Session.ClientError _) -> do
+                atomically $ modifyTVar' poolCapacity succ
+                return $ Left $ SessionUsageError err
+              _ -> do
+                returnConn
+                return $ Left $ SessionUsageError err
+            Right res -> do
+              returnConn
+              return $ Right res)
+        (\(err :: SomeException ) -> do
+          atomically $ modifyTVar' poolCapacity succ
+          throw err
+        )
       where
         returnConn =
           join . atomically $ do
