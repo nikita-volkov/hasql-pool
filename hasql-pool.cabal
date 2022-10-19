@@ -29,13 +29,10 @@ library
     Hasql.Pool
   other-modules:
     Hasql.Pool.Prelude
-    Hasql.Pool.TimeExtras.IO
-    Hasql.Pool.TimeExtras.Conversions
   build-depends:
     base >=4.11 && <5,
     hasql >=1.6.0.1 && <1.7,
     stm >=2.5 && <3,
-    time >=1.5 && <2,
     transformers >=0.5 && <0.7,
 
 test-suite test
