@@ -73,7 +73,7 @@ acquireDynamically poolSize timeout fetchConnectionSettings = do
 -- | Release all the idle connections in the pool, and mark the in-use connections
 -- to be released after use. Any connections acquired after the call will be
 -- freshly established.
--- 
+--
 -- The pool remains usable after this action.
 -- So you can use this function to reset the connections in the pool.
 -- Naturally, you can also use it to release the resources.
@@ -131,11 +131,10 @@ use Pool {..} sess = do
         Right conn -> onConn reuseVar conn
     onConn reuseVar conn = do
       sessRes <-
-        Session.run sess conn
-          `catch`
-            (\(err :: SomeException ) -> do
-              atomically $ modifyTVar' poolCapacity succ
-              throw err)
+        catch (Session.run sess conn) $ \(err :: SomeException) -> do
+          atomically $ modifyTVar' poolCapacity succ
+          throw err
+
       case sessRes of
         Left err -> case err of
           Session.QueryError _ _ (Session.ClientError _) -> do
