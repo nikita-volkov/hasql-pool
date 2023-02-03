@@ -132,6 +132,7 @@ use Pool {..} sess = do
     onConn reuseVar conn = do
       sessRes <-
         catch (Session.run sess conn) $ \(err :: SomeException) -> do
+          Connection.release conn
           atomically $ modifyTVar' poolCapacity succ
           throw err
 
