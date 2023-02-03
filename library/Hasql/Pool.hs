@@ -11,20 +11,30 @@ module Hasql.Pool
   )
 where
 
+import GHC.Clock (getMonotonicTimeNSec)
 import Hasql.Connection (Connection)
 import qualified Hasql.Connection as Connection
 import Hasql.Pool.Prelude
 import Hasql.Session (Session)
 import qualified Hasql.Session as Session
 
+
+data Conn = Conn
+  { connConnection :: Connection,
+    connCreationTimeNSec :: Word64
+  }
+
+
 -- | Pool of connections to DB.
 data Pool = Pool
   { -- | Connection settings.
     poolFetchConnectionSettings :: IO Connection.Settings,
+    -- | Maximal connection lifetime, in microseconds.
+    poolMaxLifetime :: Maybe Int,
     -- | Acquisition timeout, in microseconds.
     poolAcquisitionTimeout :: Maybe Int,
     -- | Avail connections.
-    poolConnectionQueue :: TQueue Connection,
+    poolConnectionQueue :: TQueue Conn,
     -- | Remaining capacity.
     -- The pool size limits the sum of poolCapacity, the length
     -- of poolConnectionQueue and the number of in-flight
@@ -41,13 +51,16 @@ data Pool = Pool
 acquire ::
   -- | Pool size.
   Int ->
+  -- | Maximal connection lifetime, in microseconds.
+  -- Connections can live longer than this outside the pool.
+  Maybe Int ->
   -- | Connection acquisition timeout in microseconds.
   Maybe Int ->
   -- | Connection settings.
   Connection.Settings ->
   IO Pool
-acquire poolSize timeout connectionSettings =
-  acquireDynamically poolSize timeout (pure connectionSettings)
+acquire poolSize maxLifetime acqTimeout connectionSettings =
+  acquireDynamically poolSize maxLifetime acqTimeout (pure connectionSettings)
 
 -- | Create a connection-pool.
 --
@@ -59,13 +72,16 @@ acquire poolSize timeout connectionSettings =
 acquireDynamically ::
   -- | Pool size.
   Int ->
+  -- | Maximal connection lifetime, in microseconds.
+  -- Connections can live longer than this outside the pool.
+  Maybe Int ->
   -- | Connection acquisition timeout in microseconds.
   Maybe Int ->
   -- | Action fetching connection settings.
   IO Connection.Settings ->
   IO Pool
-acquireDynamically poolSize timeout fetchConnectionSettings = do
-  Pool fetchConnectionSettings timeout
+acquireDynamically poolSize maxLifetime acqTimeout fetchConnectionSettings = do
+  Pool fetchConnectionSettings maxLifetime acqTimeout
     <$> newTQueueIO
     <*> newTVarIO poolSize
     <*> (newTVarIO =<< newTVarIO True)
@@ -86,7 +102,7 @@ release Pool {..} =
     writeTVar poolReuse newReuse
     conns <- flushTQueue poolConnectionQueue
     return $ forM_ conns $ \conn -> do
-      Connection.release conn
+      Connection.release (connConnection conn)
       atomically $ modifyTVar' poolCapacity succ
 
 -- | Use a connection from the pool to run a session and return the connection
@@ -124,16 +140,28 @@ use Pool {..} sess = do
   where
     onNewConn reuseVar = do
       settings <- poolFetchConnectionSettings
+      now <- getMonotonicTimeNSec
       connRes <- Connection.acquire settings
       case connRes of
         Left connErr -> do
           atomically $ modifyTVar' poolCapacity succ
           return $ Left $ ConnectionUsageError connErr
-        Right conn -> onConn reuseVar conn
-    onConn reuseVar conn = do
+        Right conn -> onLiveConn reuseVar (Conn conn now)
+
+    onConn reuseVar conn = case poolMaxLifetime of
+      Nothing -> onLiveConn reuseVar conn
+      Just lifetimeUSec -> do
+        now <- getMonotonicTimeNSec
+        if now > connCreationTimeNSec conn + 1000 * fromIntegral lifetimeUSec
+          then do
+            Connection.release (connConnection conn)
+            onNewConn reuseVar
+          else onLiveConn reuseVar conn
+
+    onLiveConn reuseVar conn = do
       sessRes <-
-        catch (Session.run sess conn) $ \(err :: SomeException) -> do
-          Connection.release conn
+        catch (Session.run sess (connConnection conn)) $ \(err :: SomeException) -> do
+          Connection.release (connConnection conn)
           atomically $ modifyTVar' poolCapacity succ
           throw err
 
@@ -155,7 +183,7 @@ use Pool {..} sess = do
             if reuse
               then writeTQueue poolConnectionQueue conn $> return ()
               else return $ do
-                Connection.release conn
+                Connection.release (connConnection conn)
                 atomically $ modifyTVar' poolCapacity succ
 
 -- | Union over all errors that 'use' can result in.
