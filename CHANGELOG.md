@@ -1,3 +1,11 @@
+# 0.8.0.7
+
+Fix excessive connections during releases due to race conditions.
+
+# 0.8.0.5
+
+Fix connections not returning to the pool on exceptions.
+
 # 0.8.0.2
 
 Fixed Windows build.
