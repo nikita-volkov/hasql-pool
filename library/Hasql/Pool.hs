@@ -85,8 +85,9 @@ release Pool {..} =
     newReuse <- newTVar True
     writeTVar poolReuse newReuse
     conns <- flushTQueue poolConnectionQueue
-    modifyTVar' poolCapacity (+ (length conns))
-    return $ forM_ conns Connection.release
+    return $ forM_ conns $ \conn -> do
+      Connection.release conn
+      atomically $ modifyTVar' poolCapacity succ
 
 -- | Use a connection from the pool to run a session and return the connection
 -- to the pool, when finished.
@@ -153,9 +154,9 @@ use Pool {..} sess = do
             reuse <- readTVar reuseVar
             if reuse
               then writeTQueue poolConnectionQueue conn $> return ()
-              else do
-                modifyTVar' poolCapacity succ
-                return $ Connection.release conn
+              else return $ do
+                Connection.release conn
+                atomically $ modifyTVar' poolCapacity succ
 
 -- | Union over all errors that 'use' can result in.
 data UsageError
