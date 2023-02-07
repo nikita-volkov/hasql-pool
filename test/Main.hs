@@ -116,6 +116,11 @@ main = do
       res3 <- use pool $ getSettingSession "testing.foo"
       res3 `shouldBe` Right Nothing
       release pool
+    it "Counts active connections" $ do
+      pool <- acquire 1 Nothing Nothing connectionSettings
+      res <- use pool $ countConnectionsSession appName
+      res `shouldBe` Right 1
+      release pool
 
 
 getConnectionSettings :: IO (Connection.Settings, Text)
@@ -172,3 +177,11 @@ getSettingSession name = do
     statement = Statement.Statement "SELECT current_setting($1, true)" encoder decoder True
     encoder = Encoders.param (Encoders.nonNullable Encoders.text)
     decoder = Decoders.singleRow (Decoders.column (Decoders.nullable Decoders.text))
+
+countConnectionsSession :: Text -> Session.Session Int64
+countConnectionsSession appName = do
+  Session.statement appName statement
+  where
+    statement = Statement.Statement "SELECT count(*) FROM pg_stat_activity WHERE application_name = $1" encoder decoder True
+    encoder = Encoders.param (Encoders.nonNullable Encoders.text)
+    decoder = Decoders.singleRow (Decoders.column (Decoders.nonNullable Decoders.int8))
