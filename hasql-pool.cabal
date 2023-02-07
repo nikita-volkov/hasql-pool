@@ -46,5 +46,6 @@ test-suite test
     hasql,
     hasql-pool,
     hspec >=2.6 && <3,
+    random >= 1.2 && <2,
     rerebase >=1.15 && <2,
     stm >=2.5 && <3,

@@ -2,6 +2,7 @@ module Main where
 
 import Control.Concurrent.Async (race)
 import qualified Data.ByteString.Char8 as B8
+import qualified Data.Text as Text
 import qualified Hasql.Connection as Connection
 import qualified Hasql.Decoders as Decoders
 import qualified Hasql.Encoders as Encoders
@@ -9,11 +10,13 @@ import Hasql.Pool
 import qualified Hasql.Session as Session
 import qualified Hasql.Statement as Statement
 import qualified System.Environment
+import qualified System.Random as Random
+import qualified System.Random.Stateful as Random
 import Test.Hspec
 import Prelude
 
 main = do
-  connectionSettings <- getConnectionSettings
+  (connectionSettings, appName) <- getConnectionSettings
   hspec . describe "" $ do
     it "Releases a spot in the pool when there is a query error" $ do
       pool <- acquire 1 Nothing Nothing connectionSettings
@@ -114,9 +117,10 @@ main = do
       res3 `shouldBe` Right Nothing
       release pool
 
-getConnectionSettings :: IO Connection.Settings
-getConnectionSettings =
-  B8.unwords . catMaybes
+
+getConnectionSettings :: IO (Connection.Settings, Text)
+getConnectionSettings = do
+  connStr <- B8.unwords . catMaybes
     <$> sequence
       [ setting "host" $ defaultEnv "POSTGRES_HOST" "localhost",
         setting "port" $ defaultEnv "POSTGRES_PORT" "5432",
@@ -124,6 +128,9 @@ getConnectionSettings =
         setting "password" $ maybeEnv "POSTGRES_PASSWORD",
         setting "dbname" $ defaultEnv "POSTGRES_DBNAME" "postgres"
       ]
+  tag <- Random.uniformWord32 Random.globalStdGen
+  let appName = "hasql-pool-test-" <> show tag
+  return (connStr <> " application_name=" <> B8.pack appName, Text.pack appName)
   where
     maybeEnv env = fmap B8.pack <$> System.Environment.lookupEnv env
     defaultEnv env val = Just . fromMaybe val <$> maybeEnv env
