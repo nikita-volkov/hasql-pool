@@ -19,12 +19,14 @@ main = do
       pool <- acquire 1 Nothing Nothing connectionSettings
       use pool badQuerySession `shouldNotReturn` (Right ())
       use pool selectOneSession `shouldReturn` (Right 1)
+      release pool
     it "Simulation of connection error works" $ do
       pool <- acquire 3 Nothing Nothing connectionSettings
       res <- use pool $ closeConnSession >> selectOneSession
       shouldSatisfy res $ \case
         Left (SessionUsageError (Session.QueryError _ _ (Session.ClientError _))) -> True
         _ -> False
+      release pool
     it "Connection errors cause eviction of connection" $ do
       pool <- acquire 3 Nothing Nothing connectionSettings
       res <- use pool $ closeConnSession >> selectOneSession
@@ -32,6 +34,7 @@ main = do
       res <- use pool $ closeConnSession >> selectOneSession
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
+      release pool
     it "Connection gets returned to the pool after normal use" $ do
       pool <- acquire 3 Nothing Nothing connectionSettings
       res <- use pool $ selectOneSession
@@ -40,6 +43,7 @@ main = do
       res <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
+      release pool
     it "Connection gets returned to the pool after non-connection error" $ do
       pool <- acquire 3 Nothing Nothing connectionSettings
       res <- use pool $ badQuerySession
@@ -48,12 +52,14 @@ main = do
       res <- use pool $ badQuerySession
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
+      release pool
     it "The pool remains usable after release" $ do
       pool <- acquire 1 Nothing Nothing connectionSettings
       res <- use pool $ selectOneSession
       release pool
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
+      release pool
     it "Getting and setting session variables works" $ do
       pool <- acquire 1 Nothing Nothing connectionSettings
       res <- use pool $ getSettingSession "testing.foo"
@@ -62,12 +68,14 @@ main = do
         setSettingSession "testing.foo" "hello world"
         getSettingSession "testing.foo"
       res `shouldBe` Right (Just "hello world")
+      release pool
     it "Session variables stay set when a connection gets reused" $ do
       pool <- acquire 1 Nothing Nothing connectionSettings
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       res2 <- use pool $ getSettingSession "testing.foo"
       res2 `shouldBe` Right (Just "hello world")
+      release pool
     it "Releasing the pool resets session variables" $ do
       pool <- acquire 1 Nothing Nothing connectionSettings
       res <- use pool $ setSettingSession "testing.foo" "hello world"
@@ -75,6 +83,7 @@ main = do
       release pool
       res <- use pool $ getSettingSession "testing.foo"
       res `shouldBe` Right Nothing
+      release pool
     it "Times out connection acquisition" $ do
       pool <- acquire 1 Nothing (Just 1000) connectionSettings -- 1ms timeout
       sleeping <- newEmptyMVar
@@ -93,6 +102,7 @@ main = do
       t1 <- getCurrentTime
       res `shouldBe` Right (Left AcquisitionTimeoutUsageError)
       diffUTCTime t1 t0 `shouldSatisfy` (< 0.5) -- 0.5s
+      release pool
     it "Times out old connections" $ do
       pool <- acquire 1 (Just 500000) Nothing connectionSettings -- 0.5s connection lifetime
       res <- use pool $ setSettingSession "testing.foo" "hello world"
@@ -102,6 +112,7 @@ main = do
       threadDelay 1000000 -- 1s
       res3 <- use pool $ getSettingSession "testing.foo"
       res3 `shouldBe` Right Nothing
+      release pool
 
 getConnectionSettings :: IO Connection.Settings
 getConnectionSettings =
