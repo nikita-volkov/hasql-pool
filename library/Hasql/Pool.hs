@@ -1,6 +1,13 @@
 module Hasql.Pool
   ( -- * Pool
+    Config,
+    defaultConfig,
+    setCapacity,
+    setConnectionSettings,
+    setMaxLifetime,
+    setAcquisitionTimeout,
     Pool,
+    acquireConf,
     acquire,
     acquireDynamically,
     release,
@@ -24,15 +31,40 @@ data Conn = Conn
     connCreationTimeNSec :: Word64
   }
 
+data Config = Config -- Settings ??
+  { confCapacity :: Int,
+    -- | Connection settings.
+    confFetchConnectionSettings :: IO Connection.Settings,
+    -- | Maximal connection lifetime, in microseconds.
+    confMaxLifetime :: Maybe Int,
+    -- | Acquisition timeout, in microseconds.
+    confAcquisitionTimeout :: Maybe Int
+  }
+
+defaultConfig :: Config
+defaultConfig = Config
+  { confCapacity = 10,
+    confFetchConnectionSettings = pure "host=localhost port=5432 user=postgres database=postgres",
+    confAcquisitionTimeout = Nothing,
+    confMaxLifetime = Nothing
+  }
+
+setCapacity :: Int -> Config -> Config
+setCapacity c config = config { confCapacity = c }
+
+setConnectionSettings :: Connection.Settings -> Config -> Config
+setConnectionSettings s config = config { confFetchConnectionSettings = pure s }
+
+setAcquisitionTimeout :: Maybe Int -> Config -> Config
+setAcquisitionTimeout t config = config { confAcquisitionTimeout = t }
+
+setMaxLifetime :: Maybe Int -> Config -> Config
+setMaxLifetime t config = config { confMaxLifetime = t }
 
 -- | Pool of connections to DB.
 data Pool = Pool
-  { -- | Connection settings.
-    poolFetchConnectionSettings :: IO Connection.Settings,
-    -- | Maximal connection lifetime, in microseconds.
-    poolMaxLifetime :: Maybe Int,
-    -- | Acquisition timeout, in microseconds.
-    poolAcquisitionTimeout :: Maybe Int,
+  { -- | Configuration
+    poolConfig :: Config,
     -- | Avail connections.
     poolConnectionQueue :: TQueue Conn,
     -- | Remaining capacity.
@@ -44,6 +76,14 @@ data Pool = Pool
     poolReuse :: TVar (TVar Bool)
   }
 
+
+acquireConf :: Config -> IO Pool
+acquireConf config =
+  Pool config
+    <$> newTQueueIO
+    <*> newTVarIO (confCapacity config)
+    <*> (newTVarIO =<< newTVarIO True)
+
 -- | Create a connection-pool.
 --
 -- No connections actually get established by this function. It is delegated
@@ -51,16 +91,13 @@ data Pool = Pool
 acquire ::
   -- | Pool size.
   Int ->
-  -- | Maximal connection lifetime, in microseconds.
-  -- Connections can live longer than this outside the pool.
-  Maybe Int ->
   -- | Connection acquisition timeout in microseconds.
   Maybe Int ->
   -- | Connection settings.
   Connection.Settings ->
   IO Pool
-acquire poolSize maxLifetime acqTimeout connectionSettings =
-  acquireDynamically poolSize maxLifetime acqTimeout (pure connectionSettings)
+acquire poolSize acqTimeout connectionSettings =
+  acquireDynamically poolSize acqTimeout (pure connectionSettings)
 
 -- | Create a connection-pool.
 --
@@ -72,19 +109,13 @@ acquire poolSize maxLifetime acqTimeout connectionSettings =
 acquireDynamically ::
   -- | Pool size.
   Int ->
-  -- | Maximal connection lifetime, in microseconds.
-  -- Connections can live longer than this outside the pool.
-  Maybe Int ->
   -- | Connection acquisition timeout in microseconds.
   Maybe Int ->
   -- | Action fetching connection settings.
   IO Connection.Settings ->
   IO Pool
-acquireDynamically poolSize maxLifetime acqTimeout fetchConnectionSettings = do
-  Pool fetchConnectionSettings maxLifetime acqTimeout
-    <$> newTQueueIO
-    <*> newTVarIO poolSize
-    <*> (newTVarIO =<< newTVarIO True)
+acquireDynamically poolSize acqTimeout fetchConnectionSettings =
+  acquireConf (Config poolSize fetchConnectionSettings Nothing acqTimeout)
 
 -- | Release all the idle connections in the pool, and mark the in-use connections
 -- to be released after use. Any connections acquired after the call will be
@@ -114,7 +145,7 @@ release Pool {..} =
 -- time one is needed. The error still gets returned from this function.
 use :: Pool -> Session.Session a -> IO (Either UsageError a)
 use Pool {..} sess = do
-  timeout <- case poolAcquisitionTimeout of
+  timeout <- case confAcquisitionTimeout poolConfig of
     Just delta -> do
       delay <- registerDelay delta
       return $ readTVar delay
@@ -139,7 +170,7 @@ use Pool {..} sess = do
       ]
   where
     onNewConn reuseVar = do
-      settings <- poolFetchConnectionSettings
+      settings <- confFetchConnectionSettings poolConfig
       now <- getMonotonicTimeNSec
       connRes <- Connection.acquire settings
       case connRes of
@@ -148,7 +179,7 @@ use Pool {..} sess = do
           return $ Left $ ConnectionUsageError connErr
         Right conn -> onLiveConn reuseVar (Conn conn now)
 
-    onConn reuseVar conn = case poolMaxLifetime of
+    onConn reuseVar conn = case confMaxLifetime poolConfig of
       Nothing -> onLiveConn reuseVar conn
       Just lifetimeUSec -> do
         now <- getMonotonicTimeNSec
