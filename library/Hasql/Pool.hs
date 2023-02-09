@@ -92,6 +92,10 @@ data Pool = Pool
     poolReuse :: TVar (TVar Bool)
   }
 
+-- | Run the given action with a pool, ensuring that
+-- the management thread is closed and that the pool
+-- is released afterwards. (Connections that have not
+-- been returned to the pool may survive this.)
 withManagedPool :: Config -> (Pool -> IO a) -> IO a
 withManagedPool config inner =
   bracket
@@ -162,22 +166,22 @@ release Pool {..} =
       Connection.release (connConnection conn)
       atomically $ modifyTVar' poolCapacity succ
 
+-- | Active pool management thread. (For now, this closes pooled connections
+-- that are older than maxLifetime.
 manage :: Pool -> IO ()
 manage pool@Pool {..} = forever $ do
   threadDelay (confManageInterval poolConfig)
-  clean pool
-
-clean :: Pool -> IO ()
-clean Pool {..} = do
-  now <- getMonotonicTimeNSec
-  join . atomically $ do
-    conns <- flushTQueue poolConnectionQueue
-    let (keep, close) = partition (isAlive now) conns
-    traverse_ (writeTQueue poolConnectionQueue) keep
-    return $ forM_ close $ \conn -> do
-      Connection.release (connConnection conn)
-      atomically $ modifyTVar' poolCapacity succ
+  clean
   where
+    clean = do
+      now <- getMonotonicTimeNSec
+      join . atomically $ do
+        conns <- flushTQueue poolConnectionQueue
+        let (keep, close) = partition (isAlive now) conns
+        traverse_ (writeTQueue poolConnectionQueue) keep
+        return $ forM_ close $ \conn -> do
+          Connection.release (connConnection conn)
+          atomically $ modifyTVar' poolCapacity succ
     isAlive now conn = case confMaxLifetime poolConfig of
       Nothing -> True
       Just lifetimeUSec -> now <= connCreationTimeNSec conn + 1000 * fromIntegral lifetimeUSec
