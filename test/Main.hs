@@ -110,16 +110,19 @@ main = do
       res `shouldBe` Right 1
       release pool
     it "Times out old connections" $ do
-      (taggedConnectionSettings, appName) <- tagConnection connectionSettings
-      limitedPool <- acquireConf (setMaxLifetime (Just 500000) . setConnectionSettings taggedConnectionSettings $ config)
       countPool <- acquireConf config
-      res <- use limitedPool $ selectOneSession
-      res `shouldBe` Right 1
-      res2 <- use countPool $ countConnectionsSession appName
-      res2 `shouldBe` Right 1
-      threadDelay 1000000 -- 1s
-      res3 <- use countPool $ countConnectionsSession appName
-      res3 `shouldBe` Right 0
+      (taggedConnectionSettings, appName) <- tagConnection connectionSettings
+      withManagedPool
+        (setManageInterval 10000 . setMaxLifetime (Just 500000) . setConnectionSettings taggedConnectionSettings $ config)
+        (\limitedPool -> do
+          res <- use limitedPool $ selectOneSession
+          res `shouldBe` Right 1
+          res2 <- use countPool $ countConnectionsSession appName
+          res2 `shouldBe` Right 1
+          threadDelay 1000000 -- 1s
+          res3 <- use countPool $ countConnectionsSession appName
+          res3 `shouldBe` Right 0)
+      release countPool
 
 
 getConnectionSettings :: IO Connection.Settings

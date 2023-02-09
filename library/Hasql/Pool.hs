@@ -6,10 +6,12 @@ module Hasql.Pool
     setConnectionSettings,
     setMaxLifetime,
     setAcquisitionTimeout,
+    setManageInterval,
     Pool,
     acquireConf,
     acquire,
     acquireDynamically,
+    withManagedPool,
     release,
     use,
 
@@ -18,6 +20,7 @@ module Hasql.Pool
   )
 where
 
+import qualified Control.Concurrent.Async as Async
 import GHC.Clock (getMonotonicTimeNSec)
 import Hasql.Connection (Connection)
 import qualified Hasql.Connection as Connection
@@ -38,7 +41,8 @@ data Config = Config -- Settings ??
     -- | Maximal connection lifetime, in microseconds.
     confMaxLifetime :: Maybe Int,
     -- | Acquisition timeout, in microseconds.
-    confAcquisitionTimeout :: Maybe Int
+    confAcquisitionTimeout :: Maybe Int,
+    confManageInterval :: Int -- microseconds
   }
 
 defaultConfig :: Config
@@ -46,7 +50,8 @@ defaultConfig = Config
   { confCapacity = 10,
     confFetchConnectionSettings = pure "host=localhost port=5432 user=postgres database=postgres",
     confAcquisitionTimeout = Nothing,
-    confMaxLifetime = Nothing
+    confMaxLifetime = Nothing,
+    confManageInterval = 1000000 -- 1s
   }
 
 setCapacity :: Int -> Config -> Config
@@ -55,11 +60,17 @@ setCapacity c config = config { confCapacity = c }
 setConnectionSettings :: Connection.Settings -> Config -> Config
 setConnectionSettings s config = config { confFetchConnectionSettings = pure s }
 
+setFetchConnectionSettings :: IO Connection.Settings -> Config -> Config
+setFetchConnectionSettings s config = config { confFetchConnectionSettings = s }
+
 setAcquisitionTimeout :: Maybe Int -> Config -> Config
 setAcquisitionTimeout t config = config { confAcquisitionTimeout = t }
 
 setMaxLifetime :: Maybe Int -> Config -> Config
 setMaxLifetime t config = config { confMaxLifetime = t }
+
+setManageInterval :: Int -> Config -> Config
+setManageInterval t config = config { confManageInterval = t }
 
 -- | Pool of connections to DB.
 data Pool = Pool
@@ -76,6 +87,12 @@ data Pool = Pool
     poolReuse :: TVar (TVar Bool)
   }
 
+withManagedPool :: Config -> (Pool -> IO a) -> IO a
+withManagedPool config inner =
+  bracket
+    (acquireConf config)
+    release
+    (\pool -> withAsync (manage pool) (const $ inner pool))
 
 acquireConf :: Config -> IO Pool
 acquireConf config =
@@ -115,7 +132,11 @@ acquireDynamically ::
   IO Connection.Settings ->
   IO Pool
 acquireDynamically poolSize acqTimeout fetchConnectionSettings =
-  acquireConf (Config poolSize fetchConnectionSettings Nothing acqTimeout)
+  acquireConf .
+    setCapacity poolSize .
+    setFetchConnectionSettings fetchConnectionSettings .
+    setAcquisitionTimeout acqTimeout $
+    defaultConfig
 
 -- | Release all the idle connections in the pool, and mark the in-use connections
 -- to be released after use. Any connections acquired after the call will be
@@ -135,6 +156,26 @@ release Pool {..} =
     return $ forM_ conns $ \conn -> do
       Connection.release (connConnection conn)
       atomically $ modifyTVar' poolCapacity succ
+
+manage :: Pool -> IO ()
+manage pool@Pool {..} = forever $ do
+  threadDelay (confManageInterval poolConfig)
+  clean pool
+
+clean :: Pool -> IO ()
+clean Pool {..} = do
+  now <- getMonotonicTimeNSec
+  join . atomically $ do
+    conns <- flushTQueue poolConnectionQueue
+    let (keep, close) = partition (isAlive now) conns
+    traverse_ (writeTQueue poolConnectionQueue) keep
+    return $ forM_ close $ \conn -> do
+      Connection.release (connConnection conn)
+      atomically $ modifyTVar' poolCapacity succ
+  where
+    isAlive now conn = case confMaxLifetime poolConfig of
+      Nothing -> True
+      Just lifetimeUSec -> now <= connCreationTimeNSec conn + 1000 * fromIntegral lifetimeUSec
 
 -- | Use a connection from the pool to run a session and return the connection
 -- to the pool, when finished.
