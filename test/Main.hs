@@ -18,78 +18,65 @@ import Prelude
 main = do
   (connectionSettings, appName) <- getConnectionSettings
   let config = setCapacity 3 . setConnectionSettings connectionSettings $ defaultConfig
+      withPool modifyConf = bracket
+        (acquireConf (modifyConf config))
+        release
+
   hspec . describe "" $ do
-    it "Releases a spot in the pool when there is a query error" $ do
-      pool <- acquireConf (setCapacity 1 config)
+    it "Releases a spot in the pool when there is a query error" $ withPool id $ \pool -> do
       use pool badQuerySession `shouldNotReturn` (Right ())
       use pool selectOneSession `shouldReturn` (Right 1)
-      release pool
-    it "Simulation of connection error works" $ do
-      pool <- acquireConf config
+    it "Simulation of connection error works" $ withPool id $ \pool -> do
       res <- use pool $ closeConnSession >> selectOneSession
       shouldSatisfy res $ \case
         Left (SessionUsageError (Session.QueryError _ _ (Session.ClientError _))) -> True
         _ -> False
-      release pool
-    it "Connection errors cause eviction of connection" $ do
-      pool <- acquireConf config
+    it "Connection errors cause eviction of connection" $ withPool id $ \pool -> do
       res <- use pool $ closeConnSession >> selectOneSession
       res <- use pool $ closeConnSession >> selectOneSession
       res <- use pool $ closeConnSession >> selectOneSession
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
-      release pool
-    it "Connection gets returned to the pool after normal use" $ do
-      pool <- acquireConf config
+    it "Connection gets returned to the pool after normal use" $ withPool id $ \pool -> do
       res <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
-      release pool
-    it "Connection gets returned to the pool after non-connection error" $ do
-      pool <- acquireConf config
+    it "Connection gets returned to the pool after non-connection error" $ withPool id $ \pool -> do
       res <- use pool $ badQuerySession
       res <- use pool $ badQuerySession
       res <- use pool $ badQuerySession
       res <- use pool $ badQuerySession
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
-      release pool
-    it "The pool remains usable after release" $ do
-      pool <- acquireConf config
+    it "The pool remains usable after release" $ withPool id $ \pool -> do
       res <- use pool $ selectOneSession
       release pool
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
-      release pool
-    it "Getting and setting session variables works" $ do
-      pool <- acquireConf (setCapacity 1 config)
+    it "Getting and setting session variables works" $ withPool id $ \pool -> do
       res <- use pool $ getSettingSession "testing.foo"
       res `shouldBe` Right Nothing
       res <- use pool $ do
         setSettingSession "testing.foo" "hello world"
         getSettingSession "testing.foo"
       res `shouldBe` Right (Just "hello world")
-      release pool
-    it "Session variables stay set when a connection gets reused" $ do
-      pool <- acquireConf (setCapacity 1 config)
+    it "Session variables stay set when a connection gets reused" $ withPool (setCapacity 1) $ \pool -> do
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       res2 <- use pool $ getSettingSession "testing.foo"
       res2 `shouldBe` Right (Just "hello world")
-      release pool
-    it "Releasing the pool resets session variables" $ do
-      pool <- acquireConf (setCapacity 1 config)
+    it "Releasing the pool resets session variables" $ withPool (setCapacity 1) $ \pool -> do
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       release pool
       res <- use pool $ getSettingSession "testing.foo"
       res `shouldBe` Right Nothing
-      release pool
-    it "Times out connection acquisition" $ do
-      pool <- acquireConf (setCapacity 1 . setAcquisitionTimeout (Just 1000) $ config) -- 1ms timeout
+    it "Times out connection acquisition" $
+        -- 1ms timeout
+        withPool (setCapacity 1 . setAcquisitionTimeout (Just 1000)) $ \pool -> do
       sleeping <- newEmptyMVar
       t0 <- getCurrentTime
       res <-
@@ -106,9 +93,9 @@ main = do
       t1 <- getCurrentTime
       res `shouldBe` Right (Left AcquisitionTimeoutUsageError)
       diffUTCTime t1 t0 `shouldSatisfy` (< 0.5) -- 0.5s
-      release pool
-    it "Times out old connections" $ do
-      pool <- acquireConf (setCapacity 1 . setMaxLifetime (Just 500000) $ config) -- 0.5s connection lifetime
+    it "Times out old connections" $
+        -- 0.5s connection lifetime
+        withPool (setCapacity 1 . setMaxLifetime (Just 500000)) $ \pool -> do
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       res2 <- use pool $ getSettingSession "testing.foo"
@@ -116,12 +103,9 @@ main = do
       threadDelay 1000000 -- 1s
       res3 <- use pool $ getSettingSession "testing.foo"
       res3 `shouldBe` Right Nothing
-      release pool
-    it "Counts active connections" $ do
-      pool <- acquireConf (setCapacity 1 config)
+    it "Counts active connections" $ withPool (setCapacity 1) $ \pool -> do
       res <- use pool $ countConnectionsSession appName
       res `shouldBe` Right 1
-      release pool
 
 
 getConnectionSettings :: IO (Connection.Settings, Text)
