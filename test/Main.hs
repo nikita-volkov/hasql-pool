@@ -16,7 +16,7 @@ import Test.Hspec
 import Prelude
 
 main = do
-  (connectionSettings, appName) <- getConnectionSettings
+  connectionSettings <- getConnectionSettings
   let config = setCapacity 3 . setConnectionSettings connectionSettings $ defaultConfig
       withPool modifyConf = bracket
         (acquireConf (modifyConf config))
@@ -93,7 +93,7 @@ main = do
       t1 <- getCurrentTime
       res `shouldBe` Right (Left AcquisitionTimeoutUsageError)
       diffUTCTime t1 t0 `shouldSatisfy` (< 0.5) -- 0.5s
-    it "Times out old connections" $
+    it "Passively times out old connections" $
         -- 0.5s connection lifetime
         withPool (setCapacity 1 . setMaxLifetime (Just 500000)) $ \pool -> do
       res <- use pool $ setSettingSession "testing.foo" "hello world"
@@ -103,14 +103,27 @@ main = do
       threadDelay 1000000 -- 1s
       res3 <- use pool $ getSettingSession "testing.foo"
       res3 `shouldBe` Right Nothing
-    it "Counts active connections" $ withPool (setCapacity 1) $ \pool -> do
+    it "Counts active connections" $ do
+      (taggedConnectionSettings, appName) <- tagConnection connectionSettings
+      pool <- acquireConf (setConnectionSettings taggedConnectionSettings config)
       res <- use pool $ countConnectionsSession appName
       res `shouldBe` Right 1
+      release pool
+    it "Times out old connections" $ do
+      (taggedConnectionSettings, appName) <- tagConnection connectionSettings
+      limitedPool <- acquireConf (setMaxLifetime (Just 500000) . setConnectionSettings taggedConnectionSettings $ config)
+      countPool <- acquireConf config
+      res <- use limitedPool $ selectOneSession
+      res `shouldBe` Right 1
+      res2 <- use countPool $ countConnectionsSession appName
+      res2 `shouldBe` Right 1
+      threadDelay 1000000 -- 1s
+      res3 <- use countPool $ countConnectionsSession appName
+      res3 `shouldBe` Right 0
 
 
-getConnectionSettings :: IO (Connection.Settings, Text)
-getConnectionSettings = do
-  connStr <- B8.unwords . catMaybes
+getConnectionSettings :: IO Connection.Settings
+getConnectionSettings = B8.unwords . catMaybes
     <$> sequence
       [ setting "host" $ defaultEnv "POSTGRES_HOST" "localhost",
         setting "port" $ defaultEnv "POSTGRES_PORT" "5432",
@@ -118,15 +131,18 @@ getConnectionSettings = do
         setting "password" $ maybeEnv "POSTGRES_PASSWORD",
         setting "dbname" $ defaultEnv "POSTGRES_DBNAME" "postgres"
       ]
-  tag <- Random.uniformWord32 Random.globalStdGen
-  let appName = "hasql-pool-test-" <> show tag
-  return (connStr <> " application_name=" <> B8.pack appName, Text.pack appName)
   where
     maybeEnv env = fmap B8.pack <$> System.Environment.lookupEnv env
     defaultEnv env val = Just . fromMaybe val <$> maybeEnv env
     setting label getEnv = do
       val <- getEnv
       return $ (\v -> label <> "=" <> v) <$> val
+
+tagConnection :: Connection.Settings -> IO (Connection.Settings, Text)
+tagConnection connectionSettings = do
+  tag <- Random.uniformWord32 Random.globalStdGen
+  let appName = "hasql-pool-test-" <> show tag
+  return (connectionSettings <> " application_name=" <> B8.pack appName, Text.pack appName)
 
 selectOneSession :: Session.Session Int64
 selectOneSession =
