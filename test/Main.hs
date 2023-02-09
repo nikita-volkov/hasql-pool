@@ -17,7 +17,7 @@ import Prelude
 
 main = do
   connectionSettings <- getConnectionSettings
-  let config = setCapacity 3 . setConnectionSettings connectionSettings $ defaultConfig
+  let config = setSize 3 . setConnectionSettings connectionSettings $ defaultConfig
 
   hspec . describe "" $ do
     it "Releases a spot in the pool when there is a query error" $ withManagedPool config $ \pool -> do
@@ -60,12 +60,12 @@ main = do
         setSettingSession "testing.foo" "hello world"
         getSettingSession "testing.foo"
       res `shouldBe` Right (Just "hello world")
-    it "Session variables stay set when a connection gets reused" $ withManagedPool (setCapacity 1 config) $ \pool -> do
+    it "Session variables stay set when a connection gets reused" $ withManagedPool (setSize 1 config) $ \pool -> do
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       res2 <- use pool $ getSettingSession "testing.foo"
       res2 `shouldBe` Right (Just "hello world")
-    it "Releasing the pool resets session variables" $ withManagedPool (setCapacity 1 config) $ \pool -> do
+    it "Releasing the pool resets session variables" $ withManagedPool (setSize 1 config) $ \pool -> do
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       release pool
@@ -73,7 +73,7 @@ main = do
       res `shouldBe` Right Nothing
     it "Times out connection acquisition" $
         -- 1ms timeout
-        withManagedPool (setCapacity 1 . setAcquisitionTimeout (Just 1000) $ config) $ \pool -> do
+        withManagedPool (setSize 1 . setAcquisitionTimeout (Just 1000) $ config) $ \pool -> do
       sleeping <- newEmptyMVar
       t0 <- getCurrentTime
       res <-
@@ -92,7 +92,7 @@ main = do
       diffUTCTime t1 t0 `shouldSatisfy` (< 0.5) -- 0.5s
     it "Passively times out old connections" $
         -- 0.5s connection lifetime
-        withManagedPool (setCapacity 1 . setMaxLifetime (Just 500000) $ config) $ \pool -> do
+        withManagedPool (setSize 1 . setMaxLifetime (Just 500000) $ config) $ \pool -> do
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       res2 <- use pool $ getSettingSession "testing.foo"

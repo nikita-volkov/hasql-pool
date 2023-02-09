@@ -2,7 +2,7 @@ module Hasql.Pool
   ( -- * Pool
     Config,
     defaultConfig,
-    setCapacity,
+    setSize,
     setConnectionSettings,
     setMaxLifetime,
     setAcquisitionTimeout,
@@ -29,33 +29,38 @@ import Hasql.Session (Session)
 import qualified Hasql.Session as Session
 
 
+-- | A connection tagged with metadata.
 data Conn = Conn
   { connConnection :: Connection,
     connCreationTimeNSec :: Word64
   }
 
-data Config = Config -- Settings ??
-  { confCapacity :: Int,
-    -- | Connection settings.
+-- | Collected pool configuration.
+data Config = Config
+  { -- | Pool size (default 10).
+    confSize :: Int,
+    -- | Connection settings (default postgres@localhost:5432/postgres).
     confFetchConnectionSettings :: IO Connection.Settings,
-    -- | Maximal connection lifetime, in microseconds.
+    -- | Maximal connection lifetime, in microseconds (default Nothing).
     confMaxLifetime :: Maybe Int,
-    -- | Acquisition timeout, in microseconds.
+    -- | Acquisition timeout, in microseconds (default Nothing).
     confAcquisitionTimeout :: Maybe Int,
+    -- | Interval at which the active management thread triggers (default 1s).
     confManageInterval :: Int -- microseconds
   }
 
+-- | Default pool configuration.
 defaultConfig :: Config
 defaultConfig = Config
-  { confCapacity = 10,
+  { confSize = 10,
     confFetchConnectionSettings = pure "host=localhost port=5432 user=postgres database=postgres",
     confAcquisitionTimeout = Nothing,
     confMaxLifetime = Nothing,
     confManageInterval = 1000000 -- 1s
   }
 
-setCapacity :: Int -> Config -> Config
-setCapacity c config = config { confCapacity = c }
+setSize :: Int -> Config -> Config
+setSize c config = config { confSize = c }
 
 setConnectionSettings :: Connection.Settings -> Config -> Config
 setConnectionSettings s config = config { confFetchConnectionSettings = pure s }
@@ -98,7 +103,7 @@ acquireConf :: Config -> IO Pool
 acquireConf config =
   Pool config
     <$> newTQueueIO
-    <*> newTVarIO (confCapacity config)
+    <*> newTVarIO (confSize config)
     <*> (newTVarIO =<< newTVarIO True)
 
 -- | Create a connection-pool.
@@ -133,7 +138,7 @@ acquireDynamically ::
   IO Pool
 acquireDynamically poolSize acqTimeout fetchConnectionSettings =
   acquireConf .
-    setCapacity poolSize .
+    setSize poolSize .
     setFetchConnectionSettings fetchConnectionSettings .
     setAcquisitionTimeout acqTimeout $
     defaultConfig
