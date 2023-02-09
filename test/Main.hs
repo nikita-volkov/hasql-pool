@@ -18,9 +18,7 @@ import Prelude
 main = do
   connectionSettings <- getConnectionSettings
   let config = setCapacity 3 . setConnectionSettings connectionSettings $ defaultConfig
-      withPool modifyConf = bracket
-        (acquireConf (modifyConf config))
-        release
+      withPool modifyConf = withManagedPool (modifyConf config)
 
   hspec . describe "" $ do
     it "Releases a spot in the pool when there is a query error" $ withPool id $ \pool -> do
@@ -105,24 +103,22 @@ main = do
       res3 `shouldBe` Right Nothing
     it "Counts active connections" $ do
       (taggedConnectionSettings, appName) <- tagConnection connectionSettings
-      pool <- acquireConf (setConnectionSettings taggedConnectionSettings config)
-      res <- use pool $ countConnectionsSession appName
-      res `shouldBe` Right 1
-      release pool
+      withManagedPool (setConnectionSettings taggedConnectionSettings config) $ \pool -> do
+        res <- use pool $ countConnectionsSession appName
+        res `shouldBe` Right 1
     it "Times out old connections" $ do
-      countPool <- acquireConf config
-      (taggedConnectionSettings, appName) <- tagConnection connectionSettings
-      withManagedPool
-        (setManageInterval 10000 . setMaxLifetime (Just 500000) . setConnectionSettings taggedConnectionSettings $ config)
-        (\limitedPool -> do
-          res <- use limitedPool $ selectOneSession
-          res `shouldBe` Right 1
-          res2 <- use countPool $ countConnectionsSession appName
-          res2 `shouldBe` Right 1
-          threadDelay 1000000 -- 1s
-          res3 <- use countPool $ countConnectionsSession appName
-          res3 `shouldBe` Right 0)
-      release countPool
+      withPool id $ \countPool -> do
+        (taggedConnectionSettings, appName) <- tagConnection connectionSettings
+        withManagedPool
+          (setManageInterval 10000 . setMaxLifetime (Just 500000) . setConnectionSettings taggedConnectionSettings $ config)
+          (\limitedPool -> do
+            res <- use limitedPool $ selectOneSession
+            res `shouldBe` Right 1
+            res2 <- use countPool $ countConnectionsSession appName
+            res2 `shouldBe` Right 1
+            threadDelay 1000000 -- 1s
+            res3 <- use countPool $ countConnectionsSession appName
+            res3 `shouldBe` Right 0)
 
 
 getConnectionSettings :: IO Connection.Settings
