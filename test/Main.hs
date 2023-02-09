@@ -18,55 +18,54 @@ import Prelude
 main = do
   connectionSettings <- getConnectionSettings
   let config = setCapacity 3 . setConnectionSettings connectionSettings $ defaultConfig
-      withPool modifyConf = withManagedPool (modifyConf config)
 
   hspec . describe "" $ do
-    it "Releases a spot in the pool when there is a query error" $ withPool id $ \pool -> do
+    it "Releases a spot in the pool when there is a query error" $ withManagedPool config $ \pool -> do
       use pool badQuerySession `shouldNotReturn` (Right ())
       use pool selectOneSession `shouldReturn` (Right 1)
-    it "Simulation of connection error works" $ withPool id $ \pool -> do
+    it "Simulation of connection error works" $ withManagedPool config $ \pool -> do
       res <- use pool $ closeConnSession >> selectOneSession
       shouldSatisfy res $ \case
         Left (SessionUsageError (Session.QueryError _ _ (Session.ClientError _))) -> True
         _ -> False
-    it "Connection errors cause eviction of connection" $ withPool id $ \pool -> do
+    it "Connection errors cause eviction of connection" $ withManagedPool config $ \pool -> do
       res <- use pool $ closeConnSession >> selectOneSession
       res <- use pool $ closeConnSession >> selectOneSession
       res <- use pool $ closeConnSession >> selectOneSession
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
-    it "Connection gets returned to the pool after normal use" $ withPool id $ \pool -> do
+    it "Connection gets returned to the pool after normal use" $ withManagedPool config $ \pool -> do
       res <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
-    it "Connection gets returned to the pool after non-connection error" $ withPool id $ \pool -> do
+    it "Connection gets returned to the pool after non-connection error" $ withManagedPool config $ \pool -> do
       res <- use pool $ badQuerySession
       res <- use pool $ badQuerySession
       res <- use pool $ badQuerySession
       res <- use pool $ badQuerySession
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
-    it "The pool remains usable after release" $ withPool id $ \pool -> do
+    it "The pool remains usable after release" $ withManagedPool config $ \pool -> do
       res <- use pool $ selectOneSession
       release pool
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
-    it "Getting and setting session variables works" $ withPool id $ \pool -> do
+    it "Getting and setting session variables works" $ withManagedPool config $ \pool -> do
       res <- use pool $ getSettingSession "testing.foo"
       res `shouldBe` Right Nothing
       res <- use pool $ do
         setSettingSession "testing.foo" "hello world"
         getSettingSession "testing.foo"
       res `shouldBe` Right (Just "hello world")
-    it "Session variables stay set when a connection gets reused" $ withPool (setCapacity 1) $ \pool -> do
+    it "Session variables stay set when a connection gets reused" $ withManagedPool (setCapacity 1 config) $ \pool -> do
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       res2 <- use pool $ getSettingSession "testing.foo"
       res2 `shouldBe` Right (Just "hello world")
-    it "Releasing the pool resets session variables" $ withPool (setCapacity 1) $ \pool -> do
+    it "Releasing the pool resets session variables" $ withManagedPool (setCapacity 1 config) $ \pool -> do
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       release pool
@@ -74,7 +73,7 @@ main = do
       res `shouldBe` Right Nothing
     it "Times out connection acquisition" $
         -- 1ms timeout
-        withPool (setCapacity 1 . setAcquisitionTimeout (Just 1000)) $ \pool -> do
+        withManagedPool (setCapacity 1 . setAcquisitionTimeout (Just 1000) $ config) $ \pool -> do
       sleeping <- newEmptyMVar
       t0 <- getCurrentTime
       res <-
@@ -93,7 +92,7 @@ main = do
       diffUTCTime t1 t0 `shouldSatisfy` (< 0.5) -- 0.5s
     it "Passively times out old connections" $
         -- 0.5s connection lifetime
-        withPool (setCapacity 1 . setMaxLifetime (Just 500000)) $ \pool -> do
+        withManagedPool (setCapacity 1 . setMaxLifetime (Just 500000) $ config) $ \pool -> do
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       res2 <- use pool $ getSettingSession "testing.foo"
@@ -107,7 +106,7 @@ main = do
         res <- use pool $ countConnectionsSession appName
         res `shouldBe` Right 1
     it "Times out old connections" $ do
-      withPool id $ \countPool -> do
+      withManagedPool config $ \countPool -> do
         (taggedConnectionSettings, appName) <- tagConnection connectionSettings
         withManagedPool
           (setManageInterval 10000 . setMaxLifetime (Just 500000) . setConnectionSettings taggedConnectionSettings $ config)
