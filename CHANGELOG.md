@@ -1,3 +1,11 @@
+# 0.9
+
+Connections now have a configurable maximal lifetime, configurable via a new extensible configuration interface. The pool is now actively managed, and is created using a combinator that takes care to free resources after use.
+
+Breaking changes in API:
+
+- `acquire` and `acquireDynamically` are replaced with `withPool` and `withPoolConf`
+
 # 0.8.0.7
 
 Fix excessive connections during releases due to race conditions.

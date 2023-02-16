@@ -1,19 +1,19 @@
 module Hasql.Pool
   ( -- * Pool
+    Pool,
+    withPool,
+    withPoolConf,
+    use,
+    release,
+
+    -- * Configuration
     Config,
     defaultConfig,
-    setSize,
     setConnectionSettings,
+    setSize,
     setMaxLifetime,
     setAcquisitionTimeout,
     setManageInterval,
-    Pool,
-    acquireConf,
-    acquire,
-    acquireDynamically,
-    withManagedPool,
-    release,
-    use,
 
     -- * Errors
     UsageError (..),
@@ -35,7 +35,10 @@ data Conn = Conn
     connCreationTimeNSec :: Word64
   }
 
--- | Collected pool configuration.
+-- | Pool configuration.
+--
+-- This is created by modifying 'defaultConfig' using the various setters,
+-- to be passed to 'withPoolConf'.
 data Config = Config
   { -- | Pool size (default 10).
     confSize :: Int,
@@ -45,8 +48,8 @@ data Config = Config
     confMaxLifetime :: Maybe Int,
     -- | Acquisition timeout, in microseconds (default Nothing).
     confAcquisitionTimeout :: Maybe Int,
-    -- | Interval at which the active management thread triggers (default 1s).
-    confManageInterval :: Int -- microseconds
+    -- | Interval at which the active management thread triggers, in microseconds (default 1s).
+    confManageInterval :: Int
   }
 
 -- | Default pool configuration.
@@ -59,21 +62,43 @@ defaultConfig = Config
     confManageInterval = 1000000 -- 1s
   }
 
+-- | Modify a pool configuration, setting the pool size (default 10).
+--
+-- The pool guarantees that the number of concurrent connections never
+-- exceeds this value.
 setSize :: Int -> Config -> Config
 setSize c config = config { confSize = c }
 
+-- | Modify a pool configuration, setting a constant connection string. (default "").
 setConnectionSettings :: Connection.Settings -> Config -> Config
 setConnectionSettings s config = config { confFetchConnectionSettings = pure s }
 
+-- | Modify a pool configuration, setting a dynamic connection string.
+-- When creating a connection, the action will be run to determine the
+-- current connection string.
 setFetchConnectionSettings :: IO Connection.Settings -> Config -> Config
 setFetchConnectionSettings s config = config { confFetchConnectionSettings = s }
 
+-- | Modify a pool configuration, setting an acquisition timeout in microseconds. (default 'Nothing', i.e., disabled)
+--
+-- If this timeout is set, then acquiring a connection via 'use' will fail
+-- with 'AcquisitionTimeoutUsageError' if no connection becomes available
+-- within the timeout.
 setAcquisitionTimeout :: Maybe Int -> Config -> Config
 setAcquisitionTimeout t config = config { confAcquisitionTimeout = t }
 
+-- | Modify a pool configuration, setting a maximum connection lifetime, in microseconds. (default 'Nothing', i.e., disabled)
+--
+-- If this timeout is set, then connections will be closed once they
+-- are older than this value (and have been returned to the pool).
 setMaxLifetime :: Maybe Int -> Config -> Config
 setMaxLifetime t config = config { confMaxLifetime = t }
 
+-- | Modify a pool configuration, setting the management thread's iteration interval, in microseconds. (Default 1s).
+--
+-- The pool's management thread sleeps for this interval between runs. This
+-- setting affects the precision to which e.g. connection lifetime is limited
+-- via 'setMaxLifetime'.
 setManageInterval :: Int -> Config -> Config
 setManageInterval t config = config { confManageInterval = t }
 
@@ -92,60 +117,47 @@ data Pool = Pool
     poolReuse :: TVar (TVar Bool)
   }
 
--- | Run the given action with a pool, ensuring that
--- the management thread is closed and that the pool
--- is released afterwards. (Connections that have not
--- been returned to the pool may survive this.)
-withManagedPool :: Config -> (Pool -> IO a) -> IO a
-withManagedPool config inner =
+-- | Create a connection-pool, and run the given action with it.
+--
+-- This uses default settings beyond the pool size and connection string.
+-- Use 'withPoolConf' to modify the defaults.
+withPool ::
+  -- | Pool size.
+  Int ->
+  -- | Connection settings.
+  Connection.Settings ->
+  -- | Action.
+  (Pool -> IO a)
+  -> IO a
+withPool poolSize connectionSettings = withPoolConf conf
+  where
+    conf = setSize poolSize . setFetchConnectionSettings (pure connectionSettings) $ defaultConfig
+
+-- | Create a connection-pool, and run the given action with it.
+--
+-- No connections actually get established by this function. It is delegated
+-- to 'use'.
+--
+-- Resources associated with the pool are cleaned up afterwards, but
+-- connections that have not been returned to the pool will survive.
+withPoolConf ::
+  -- | Pool configuration.
+  Config ->
+  -- | Action.
+  (Pool -> IO a)
+  -> IO a
+withPoolConf config inner =
   bracket
-    (acquireConf config)
+    (acquire config)
     release
     (\pool -> withAsync (manage pool) (const $ inner pool))
 
-acquireConf :: Config -> IO Pool
-acquireConf config =
+acquire :: Config -> IO Pool
+acquire config =
   Pool config
     <$> newTQueueIO
     <*> newTVarIO (confSize config)
     <*> (newTVarIO =<< newTVarIO True)
-
--- | Create a connection-pool.
---
--- No connections actually get established by this function. It is delegated
--- to 'use'.
-acquire ::
-  -- | Pool size.
-  Int ->
-  -- | Connection acquisition timeout in microseconds.
-  Maybe Int ->
-  -- | Connection settings.
-  Connection.Settings ->
-  IO Pool
-acquire poolSize acqTimeout connectionSettings =
-  acquireDynamically poolSize acqTimeout (pure connectionSettings)
-
--- | Create a connection-pool.
---
--- In difference to 'acquire' new settings get fetched each time a connection
--- is created. This may be useful for some security models.
---
--- No connections actually get established by this function. It is delegated
--- to 'use'.
-acquireDynamically ::
-  -- | Pool size.
-  Int ->
-  -- | Connection acquisition timeout in microseconds.
-  Maybe Int ->
-  -- | Action fetching connection settings.
-  IO Connection.Settings ->
-  IO Pool
-acquireDynamically poolSize acqTimeout fetchConnectionSettings =
-  acquireConf .
-    setSize poolSize .
-    setFetchConnectionSettings fetchConnectionSettings .
-    setAcquisitionTimeout acqTimeout $
-    defaultConfig
 
 -- | Release all the idle connections in the pool, and mark the in-use connections
 -- to be released after use. Any connections acquired after the call will be
@@ -167,7 +179,7 @@ release Pool {..} =
       atomically $ modifyTVar' poolCapacity succ
 
 -- | Active pool management thread. (For now, this closes pooled connections
--- that are older than maxLifetime.
+-- that are older than maxLifetime.)
 manage :: Pool -> IO ()
 manage pool@Pool {..} = forever $ do
   threadDelay (confManageInterval poolConfig)
