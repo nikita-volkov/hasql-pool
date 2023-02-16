@@ -72,34 +72,34 @@ main = do
       res <- use pool $ getSettingSession "testing.foo"
       res `shouldBe` Right Nothing
     it "Times out connection acquisition" $
-        -- 1ms timeout
-        withPoolConf (setSize 1 . setAcquisitionTimeout (Just 1000) $ config) $ \pool -> do
-      sleeping <- newEmptyMVar
-      t0 <- getCurrentTime
-      res <-
-        race
-          ( use pool $
-              liftIO $ do
-                putMVar sleeping ()
-                threadDelay 1000000 -- 1s
-          )
-          ( do
-              takeMVar sleeping
-              use pool $ selectOneSession
-          )
-      t1 <- getCurrentTime
-      res `shouldBe` Right (Left AcquisitionTimeoutUsageError)
-      diffUTCTime t1 t0 `shouldSatisfy` (< 0.5) -- 0.5s
+      -- 1ms timeout
+      withPoolConf (setSize 1 . setAcquisitionTimeout (Just 1000) $ config) $ \pool -> do
+        sleeping <- newEmptyMVar
+        t0 <- getCurrentTime
+        res <-
+          race
+            ( use pool $
+                liftIO $ do
+                  putMVar sleeping ()
+                  threadDelay 1000000 -- 1s
+            )
+            ( do
+                takeMVar sleeping
+                use pool $ selectOneSession
+            )
+        t1 <- getCurrentTime
+        res `shouldBe` Right (Left AcquisitionTimeoutUsageError)
+        diffUTCTime t1 t0 `shouldSatisfy` (< 0.5) -- 0.5s
     it "Passively times out old connections" $
-        -- 0.5s connection lifetime
-        withPoolConf (setSize 1 . setMaxLifetime (Just 500000) $ config) $ \pool -> do
-      res <- use pool $ setSettingSession "testing.foo" "hello world"
-      res `shouldBe` Right ()
-      res2 <- use pool $ getSettingSession "testing.foo"
-      res2 `shouldBe` Right (Just "hello world")
-      threadDelay 1000000 -- 1s
-      res3 <- use pool $ getSettingSession "testing.foo"
-      res3 `shouldBe` Right Nothing
+      -- 0.5s connection lifetime
+      withPoolConf (setSize 1 . setMaxLifetime (Just 500000) $ config) $ \pool -> do
+        res <- use pool $ setSettingSession "testing.foo" "hello world"
+        res `shouldBe` Right ()
+        res2 <- use pool $ getSettingSession "testing.foo"
+        res2 `shouldBe` Right (Just "hello world")
+        threadDelay 1000000 -- 1s
+        res3 <- use pool $ getSettingSession "testing.foo"
+        res3 `shouldBe` Right Nothing
     it "Counts active connections" $ do
       (taggedConnectionSettings, appName) <- tagConnection connectionSettings
       withPoolConf (setConnectionSettings taggedConnectionSettings config) $ \pool -> do
@@ -110,18 +110,19 @@ main = do
         (taggedConnectionSettings, appName) <- tagConnection connectionSettings
         withPoolConf
           (setManageInterval 10000 . setMaxLifetime (Just 500000) . setConnectionSettings taggedConnectionSettings $ config)
-          (\limitedPool -> do
-            res <- use limitedPool $ selectOneSession
-            res `shouldBe` Right 1
-            res2 <- use countPool $ countConnectionsSession appName
-            res2 `shouldBe` Right 1
-            threadDelay 1000000 -- 1s
-            res3 <- use countPool $ countConnectionsSession appName
-            res3 `shouldBe` Right 0)
-
+          ( \limitedPool -> do
+              res <- use limitedPool $ selectOneSession
+              res `shouldBe` Right 1
+              res2 <- use countPool $ countConnectionsSession appName
+              res2 `shouldBe` Right 1
+              threadDelay 1000000 -- 1s
+              res3 <- use countPool $ countConnectionsSession appName
+              res3 `shouldBe` Right 0
+          )
 
 getConnectionSettings :: IO Connection.Settings
-getConnectionSettings = B8.unwords . catMaybes
+getConnectionSettings =
+  B8.unwords . catMaybes
     <$> sequence
       [ setting "host" $ defaultEnv "POSTGRES_HOST" "localhost",
         setting "port" $ defaultEnv "POSTGRES_PORT" "5432",

@@ -28,7 +28,6 @@ import Hasql.Pool.Prelude
 import Hasql.Session (Session)
 import qualified Hasql.Session as Session
 
-
 -- | Pool configuration.
 --
 -- This is created by modifying 'defaultConfig' using the various setters,
@@ -48,30 +47,31 @@ data Config = Config
 
 -- | Default pool configuration.
 defaultConfig :: Config
-defaultConfig = Config
-  { confSize = 10,
-    confFetchConnectionSettings = pure "",
-    confAcquisitionTimeout = Nothing,
-    confMaxLifetime = Nothing,
-    confManageInterval = 1000000 -- 1s
-  }
+defaultConfig =
+  Config
+    { confSize = 10,
+      confFetchConnectionSettings = pure "",
+      confAcquisitionTimeout = Nothing,
+      confMaxLifetime = Nothing,
+      confManageInterval = 1000000 -- 1s
+    }
 
 -- | Modify a pool configuration, setting the pool size (default 10).
 --
 -- The pool guarantees that the number of concurrent connections never
 -- exceeds this value.
 setSize :: Int -> Config -> Config
-setSize c config = config { confSize = c }
+setSize c config = config {confSize = c}
 
 -- | Modify a pool configuration, setting a constant connection string. (default "").
 setConnectionSettings :: Connection.Settings -> Config -> Config
-setConnectionSettings s config = config { confFetchConnectionSettings = pure s }
+setConnectionSettings s config = config {confFetchConnectionSettings = pure s}
 
 -- | Modify a pool configuration, setting a dynamic connection string.
 -- When creating a connection, the action will be run to determine the
 -- current connection string.
 setFetchConnectionSettings :: IO Connection.Settings -> Config -> Config
-setFetchConnectionSettings s config = config { confFetchConnectionSettings = s }
+setFetchConnectionSettings s config = config {confFetchConnectionSettings = s}
 
 -- | Modify a pool configuration, setting an acquisition timeout in microseconds. (default 'Nothing', i.e., disabled)
 --
@@ -79,14 +79,14 @@ setFetchConnectionSettings s config = config { confFetchConnectionSettings = s }
 -- with 'AcquisitionTimeoutUsageError' if no connection becomes available
 -- within the timeout.
 setAcquisitionTimeout :: Maybe Int -> Config -> Config
-setAcquisitionTimeout t config = config { confAcquisitionTimeout = t }
+setAcquisitionTimeout t config = config {confAcquisitionTimeout = t}
 
 -- | Modify a pool configuration, setting a maximum connection lifetime, in microseconds. (default 'Nothing', i.e., disabled)
 --
 -- If this timeout is set, then connections will be closed once they
 -- are older than this value (and have been returned to the pool).
 setMaxLifetime :: Maybe Int -> Config -> Config
-setMaxLifetime t config = config { confMaxLifetime = t }
+setMaxLifetime t config = config {confMaxLifetime = t}
 
 -- | Modify a pool configuration, setting the management thread's iteration interval, in microseconds. (Default 1s).
 --
@@ -94,7 +94,7 @@ setMaxLifetime t config = config { confMaxLifetime = t }
 -- setting affects the precision to which e.g. connection lifetime is limited
 -- via 'setMaxLifetime'.
 setManageInterval :: Int -> Config -> Config
-setManageInterval t config = config { confManageInterval = t }
+setManageInterval t config = config {confManageInterval = t}
 
 -- | A connection tagged with metadata.
 data Conn = Conn
@@ -132,8 +132,8 @@ withPool ::
   -- | Connection settings.
   Connection.Settings ->
   -- | Action.
-  (Pool -> IO a)
-  -> IO a
+  (Pool -> IO a) ->
+  IO a
 withPool poolSize connectionSettings = withPoolConf conf
   where
     conf = setSize poolSize . setFetchConnectionSettings (pure connectionSettings) $ defaultConfig
@@ -149,8 +149,8 @@ withPoolConf ::
   -- | Pool configuration.
   Config ->
   -- | Action.
-  (Pool -> IO a)
-  -> IO a
+  (Pool -> IO a) ->
+  IO a
 withPoolConf config inner =
   bracket
     (acquire config)
