@@ -188,17 +188,14 @@ release Pool {..} =
 manage :: Pool -> IO ()
 manage pool@Pool {..} = forever $ do
   threadDelay (confManageInterval poolConfig)
-  clean
-  where
-    clean = do
-      now <- getMonotonicTimeNSec
-      join . atomically $ do
-        conns <- flushTQueue poolConnectionQueue
-        let (keep, close) = partition (isAlive poolConfig now) conns
-        traverse_ (writeTQueue poolConnectionQueue) keep
-        return $ forM_ close $ \conn -> do
-          Connection.release (connConnection conn)
-          atomically $ modifyTVar' poolCapacity succ
+  now <- getMonotonicTimeNSec
+  join . atomically $ do
+    conns <- flushTQueue poolConnectionQueue
+    let (keep, close) = partition (isAlive poolConfig now) conns
+    traverse_ (writeTQueue poolConnectionQueue) keep
+    return $ forM_ close $ \conn -> do
+      Connection.release (connConnection conn)
+      atomically $ modifyTVar' poolCapacity succ
 
 -- | Use a connection from the pool to run a session and return the connection
 -- to the pool, when finished.
