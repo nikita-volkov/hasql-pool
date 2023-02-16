@@ -29,12 +29,6 @@ import Hasql.Session (Session)
 import qualified Hasql.Session as Session
 
 
--- | A connection tagged with metadata.
-data Conn = Conn
-  { connConnection :: Connection,
-    connCreationTimeNSec :: Word64
-  }
-
 -- | Pool configuration.
 --
 -- This is created by modifying 'defaultConfig' using the various setters,
@@ -101,6 +95,17 @@ setMaxLifetime t config = config { confMaxLifetime = t }
 -- via 'setMaxLifetime'.
 setManageInterval :: Int -> Config -> Config
 setManageInterval t config = config { confManageInterval = t }
+
+-- | A connection tagged with metadata.
+data Conn = Conn
+  { connConnection :: Connection,
+    connCreationTimeNSec :: Word64
+  }
+
+isAlive :: Config -> Word64 -> Conn -> Bool
+isAlive poolConfig now conn = case confMaxLifetime poolConfig of
+  Nothing -> True
+  Just lifetimeUSec -> now <= connCreationTimeNSec conn + 1000 * fromIntegral lifetimeUSec
 
 -- | Pool of connections to DB.
 data Pool = Pool
@@ -189,14 +194,11 @@ manage pool@Pool {..} = forever $ do
       now <- getMonotonicTimeNSec
       join . atomically $ do
         conns <- flushTQueue poolConnectionQueue
-        let (keep, close) = partition (isAlive now) conns
+        let (keep, close) = partition (isAlive poolConfig now) conns
         traverse_ (writeTQueue poolConnectionQueue) keep
         return $ forM_ close $ \conn -> do
           Connection.release (connConnection conn)
           atomically $ modifyTVar' poolCapacity succ
-    isAlive now conn = case confMaxLifetime poolConfig of
-      Nothing -> True
-      Just lifetimeUSec -> now <= connCreationTimeNSec conn + 1000 * fromIntegral lifetimeUSec
 
 -- | Use a connection from the pool to run a session and return the connection
 -- to the pool, when finished.
@@ -243,13 +245,13 @@ use Pool {..} sess = do
 
     onConn reuseVar conn = case confMaxLifetime poolConfig of
       Nothing -> onLiveConn reuseVar conn
-      Just lifetimeUSec -> do
+      Just _ -> do
         now <- getMonotonicTimeNSec
-        if now > connCreationTimeNSec conn + 1000 * fromIntegral lifetimeUSec
-          then do
+        if isAlive poolConfig now conn
+          then onLiveConn reuseVar conn
+          else do
             Connection.release (connConnection conn)
             onNewConn reuseVar
-          else onLiveConn reuseVar conn
 
     onLiveConn reuseVar conn = do
       sessRes <-
