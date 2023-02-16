@@ -39,7 +39,7 @@ data Conn = Conn
 data Config = Config
   { -- | Pool size (default 10).
     confSize :: Int,
-    -- | Connection settings (default postgres@localhost:5432/postgres).
+    -- | Connection settings (default "").
     confFetchConnectionSettings :: IO Connection.Settings,
     -- | Maximal connection lifetime, in microseconds (default Nothing).
     confMaxLifetime :: Maybe Int,
@@ -53,7 +53,7 @@ data Config = Config
 defaultConfig :: Config
 defaultConfig = Config
   { confSize = 10,
-    confFetchConnectionSettings = pure "host=localhost port=5432 user=postgres database=postgres",
+    confFetchConnectionSettings = pure "",
     confAcquisitionTimeout = Nothing,
     confMaxLifetime = Nothing,
     confManageInterval = 1000000 -- 1s
