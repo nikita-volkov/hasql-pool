@@ -37,10 +37,10 @@ data Config = Config
     confSize :: Int,
     -- | Connection settings (default "").
     confFetchConnectionSettings :: IO Connection.Settings,
-    -- | Maximal connection lifetime, in microseconds (default Nothing).
-    confMaxLifetime :: Maybe Int,
-    -- | Acquisition timeout, in microseconds (default Nothing).
-    confAcquisitionTimeout :: Maybe Int,
+    -- | Maximal connection lifetime, in microseconds (default 30m).
+    confMaxLifetime :: Int,
+    -- | Acquisition timeout, in microseconds (default 10s).
+    confAcquisitionTimeout :: Int,
     -- | Interval at which the active management thread triggers, in microseconds (default 1s).
     confManageInterval :: Int
   }
@@ -51,10 +51,13 @@ defaultConfig =
   Config
     { confSize = 10,
       confFetchConnectionSettings = pure "",
-      confAcquisitionTimeout = Nothing,
-      confMaxLifetime = Nothing,
-      confManageInterval = 1000000 -- 1s
+      confAcquisitionTimeout = 10 * oneSecond,
+      confMaxLifetime = 30 * oneMinute,
+      confManageInterval = oneSecond
     }
+  where
+    oneSecond = 1000000
+    oneMinute = 60 * oneSecond
 
 -- | Modify a pool configuration, setting the pool size (default 10).
 --
@@ -73,19 +76,18 @@ setConnectionSettings s config = config {confFetchConnectionSettings = pure s}
 setFetchConnectionSettings :: IO Connection.Settings -> Config -> Config
 setFetchConnectionSettings s config = config {confFetchConnectionSettings = s}
 
--- | Modify a pool configuration, setting an acquisition timeout in microseconds. (default 'Nothing', i.e., disabled)
+-- | Modify a pool configuration, setting the acquisition timeout in microseconds. (default 'Nothing', i.e., disabled)
 --
--- If this timeout is set, then acquiring a connection via 'use' will fail
--- with 'AcquisitionTimeoutUsageError' if no connection becomes available
--- within the timeout.
-setAcquisitionTimeout :: Maybe Int -> Config -> Config
+-- Acquiring a connection via 'use' will fail with 'AcquisitionTimeoutUsageError'
+-- if no connection becomes available within the timeout.
+setAcquisitionTimeout :: Int -> Config -> Config
 setAcquisitionTimeout t config = config {confAcquisitionTimeout = t}
 
--- | Modify a pool configuration, setting a maximum connection lifetime, in microseconds. (default 'Nothing', i.e., disabled)
+-- | Modify a pool configuration, setting the maximum connection lifetime, in microseconds. (default 'Nothing', i.e., disabled)
 --
--- If this timeout is set, then connections will be closed once they
--- are older than this value (and have been returned to the pool).
-setMaxLifetime :: Maybe Int -> Config -> Config
+-- Connections will be closed once they are older than this value
+-- (and have been returned to the pool).
+setMaxLifetime :: Int -> Config -> Config
 setMaxLifetime t config = config {confMaxLifetime = t}
 
 -- | Modify a pool configuration, setting the management thread's iteration interval, in microseconds. (Default 1s).
@@ -103,9 +105,8 @@ data Conn = Conn
   }
 
 isAlive :: Config -> Word64 -> Conn -> Bool
-isAlive poolConfig now conn = case confMaxLifetime poolConfig of
-  Nothing -> True
-  Just lifetimeUSec -> now <= connCreationTimeNSec conn + 1000 * fromIntegral lifetimeUSec
+isAlive poolConfig now conn =
+  now <= connCreationTimeNSec conn + 1000 * fromIntegral (confMaxLifetime poolConfig)
 
 -- | Pool of connections to DB.
 data Pool = Pool
@@ -206,12 +207,9 @@ manage pool@Pool {..} = forever $ do
 -- time one is needed. The error still gets returned from this function.
 use :: Pool -> Session.Session a -> IO (Either UsageError a)
 use Pool {..} sess = do
-  timeout <- case confAcquisitionTimeout poolConfig of
-    Just delta -> do
-      delay <- registerDelay delta
-      return $ readTVar delay
-    Nothing ->
-      return $ return False
+  timeout <- do
+    delay <- registerDelay $ confAcquisitionTimeout poolConfig
+    return $ readTVar delay
   join . atomically $ do
     reuseVar <- readTVar poolReuse
     asum
@@ -240,15 +238,13 @@ use Pool {..} sess = do
           return $ Left $ ConnectionUsageError connErr
         Right conn -> onLiveConn reuseVar (Conn conn now)
 
-    onConn reuseVar conn = case confMaxLifetime poolConfig of
-      Nothing -> onLiveConn reuseVar conn
-      Just _ -> do
-        now <- getMonotonicTimeNSec
-        if isAlive poolConfig now conn
-          then onLiveConn reuseVar conn
-          else do
-            Connection.release (connConnection conn)
-            onNewConn reuseVar
+    onConn reuseVar conn = do
+      now <- getMonotonicTimeNSec
+      if isAlive poolConfig now conn
+        then onLiveConn reuseVar conn
+        else do
+          Connection.release (connConnection conn)
+          onNewConn reuseVar
 
     onLiveConn reuseVar conn = do
       sessRes <-

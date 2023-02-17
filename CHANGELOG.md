@@ -1,6 +1,6 @@
 # 0.9
 
-Connections now have a configurable maximal lifetime, configurable via a new extensible configuration interface. The pool is now actively managed, and is created using a combinator that takes care to free resources after use.
+Connections now have a maximal lifetime, defaulting to 30m and configurable via a new extensible configuration interface. The pool is now actively managed, and is created using a combinator that takes care to free resources after use. The acquisition timeout is now also non-optional, defaulting to 10s.
 
 Breaking changes in API:
 

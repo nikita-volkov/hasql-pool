@@ -73,7 +73,7 @@ main = do
       res `shouldBe` Right Nothing
     it "Times out connection acquisition" $
       -- 1ms timeout
-      withPoolConf (setSize 1 . setAcquisitionTimeout (Just 1000) $ config) $ \pool -> do
+      withPoolConf (setSize 1 . setAcquisitionTimeout 1000 $ config) $ \pool -> do
         sleeping <- newEmptyMVar
         t0 <- getCurrentTime
         res <-
@@ -92,7 +92,7 @@ main = do
         diffUTCTime t1 t0 `shouldSatisfy` (< 0.5) -- 0.5s
     it "Passively times out old connections" $
       -- 0.5s connection lifetime
-      withPoolConf (setSize 1 . setMaxLifetime (Just 500000) $ config) $ \pool -> do
+      withPoolConf (setSize 1 . setMaxLifetime 500000 $ config) $ \pool -> do
         res <- use pool $ setSettingSession "testing.foo" "hello world"
         res `shouldBe` Right ()
         res2 <- use pool $ getSettingSession "testing.foo"
@@ -109,7 +109,7 @@ main = do
       withPoolConf config $ \countPool -> do
         (taggedConnectionSettings, appName) <- tagConnection connectionSettings
         withPoolConf
-          (setManageInterval 10000 . setMaxLifetime (Just 500000) . setConnectionSettings taggedConnectionSettings $ config)
+          (setManageInterval 10000 . setMaxLifetime 500000 . setConnectionSettings taggedConnectionSettings $ config)
           ( \limitedPool -> do
               res <- use limitedPool $ selectOneSession
               res `shouldBe` Right 1
