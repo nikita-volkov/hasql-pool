@@ -18,6 +18,7 @@ import Prelude
 main = do
   connectionSettings <- getConnectionSettings
   let config = setSize 3 . setConnectionSettings connectionSettings $ defaultConfig
+      withPoolConf conf = bracket (acquireConf conf) release
 
   hspec . describe "" $ do
     it "Releases a spot in the pool when there is a query error" $ withPoolConf config $ \pool -> do

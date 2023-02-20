@@ -1,10 +1,8 @@
-# 0.9
+# 0.8.1
 
-Connections now have a maximal lifetime, defaulting to 30m and configurable via a new extensible configuration interface. The pool is now actively managed, and is created using a combinator that takes care to free resources after use. The acquisition timeout is now also non-optional, defaulting to 10s.
+Connections now have a maximal lifetime, defaulting to 30m and configurable via a new extensible configuration interface. The acquisition timeout is now also non-optional, defaulting to 10s.
 
-Breaking changes in API:
-
-- `acquire` and `acquireDynamically` are replaced with `withPool` and `withPoolConf`
+Adds `Config`, various setters and `acquireConf`.
 
 # 0.8.0.7
 

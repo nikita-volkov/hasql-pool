@@ -1,8 +1,9 @@
 module Hasql.Pool
   ( -- * Pool
     Pool,
-    withPool,
-    withPoolConf,
+    acquire,
+    acquireConf,
+    acquireDynamically,
     use,
     release,
 
@@ -109,7 +110,7 @@ isAlive poolConfig now conn =
   now <= connCreationTimeNSec conn + 1000 * fromIntegral (confMaxLifetime poolConfig)
 
 -- | Pool of connections to DB.
-data Pool = Pool
+data RawPool = RawPool
   { -- | Configuration
     poolConfig :: Config,
     -- | Avail connections.
@@ -123,47 +124,65 @@ data Pool = Pool
     poolReuse :: TVar (TVar Bool)
   }
 
--- | Create a connection-pool, and run the given action with it.
---
--- This uses default settings beyond the pool size and connection string.
--- Use 'withPoolConf' to modify the defaults.
-withPool ::
-  -- | Pool size.
-  Int ->
-  -- | Connection settings.
-  Connection.Settings ->
-  -- | Action.
-  (Pool -> IO a) ->
-  IO a
-withPool poolSize connectionSettings = withPoolConf conf
-  where
-    conf = setSize poolSize . setFetchConnectionSettings (pure connectionSettings) $ defaultConfig
+data Pool = Pool
+  { pool :: RawPool,
+    reaperRef :: IORef ()
+  }
 
--- | Create a connection-pool, and run the given action with it.
+-- | Create a connection-pool.
 --
 -- No connections actually get established by this function. It is delegated
 -- to 'use'.
---
--- Resources associated with the pool are cleaned up afterwards, but
--- connections that have not been returned to the pool will survive.
-withPoolConf ::
-  -- | Pool configuration.
-  Config ->
-  -- | Action.
-  (Pool -> IO a) ->
-  IO a
-withPoolConf config inner =
-  bracket
-    (acquire config)
-    release
-    (\pool -> withAsync (manage pool) (const $ inner pool))
+acquireConf :: Config -> IO Pool
+acquireConf config = do
+  rawPool <-
+    RawPool config
+      <$> newTQueueIO
+      <*> newTVarIO (confSize config)
+      <*> (newTVarIO =<< newTVarIO True)
+  ref <- newIORef ()
+  manager <- forkIOWithUnmask $ \unmask -> unmask $ manage rawPool
+  void . mkWeakIORef ref $ do
+    -- When the pool goes out of scope, stop the manager.
+    killThread manager
+  return $ Pool rawPool ref
 
-acquire :: Config -> IO Pool
-acquire config =
-  Pool config
-    <$> newTQueueIO
-    <*> newTVarIO (confSize config)
-    <*> (newTVarIO =<< newTVarIO True)
+-- | Create a connection-pool, with default settings.
+--
+-- No connections actually get established by this function. It is delegated
+-- to 'use'.
+acquire ::
+  -- | Pool size.
+  Int ->
+  -- | Connection acquisition timeout in microseconds.
+  Maybe Int ->
+  -- | Connection settings.
+  Connection.Settings ->
+  IO Pool
+acquire poolSize acqTimeout connectionSettings =
+  acquireDynamically poolSize acqTimeout (pure connectionSettings)
+
+-- | Create a connection-pool.
+--
+-- In difference to 'acquire' new connection settings get fetched each
+-- time a connection is created. This may be useful for some security models.
+--
+-- No connections actually get established by this function. It is delegated
+-- to 'use'.
+acquireDynamically ::
+  -- | Pool size.
+  Int ->
+  -- | Connection acquisition timeout in microseconds.
+  Maybe Int ->
+  -- | Action fetching connection settings.
+  IO Connection.Settings ->
+  IO Pool
+acquireDynamically poolSize acqTimeout fetchConnectionSettings =
+  acquireConf
+    . setSize poolSize
+    . setFetchConnectionSettings fetchConnectionSettings
+    . maybe id setAcquisitionTimeout acqTimeout
+    $ defaultConfig
 
 -- | Release all the idle connections in the pool, and mark the in-use connections
 -- to be released after use. Any connections acquired after the call will be
@@ -173,7 +192,7 @@ acquire config =
 -- So you can use this function to reset the connections in the pool.
 -- Naturally, you can also use it to release the resources.
 release :: Pool -> IO ()
-release Pool {..} =
+release (Pool (RawPool {..}) _) =
   join . atomically $ do
     prevReuse <- readTVar poolReuse
     writeTVar prevReuse False
@@ -186,8 +205,8 @@ release Pool {..} =
 
 -- | Active pool management thread. (For now, this closes pooled connections
 -- that are older than maxLifetime.)
-manage :: Pool -> IO ()
-manage pool@Pool {..} = forever $ do
+manage :: RawPool -> IO ()
+manage RawPool {..} = forever $ do
   threadDelay (confManageInterval poolConfig)
   now <- getMonotonicTimeNSec
   join . atomically $ do
@@ -206,7 +225,7 @@ manage pool@Pool {..} = forever $ do
 -- and a slot gets freed up for a new connection to be established the next
 -- time one is needed. The error still gets returned from this function.
 use :: Pool -> Session.Session a -> IO (Either UsageError a)
-use Pool {..} sess = do
+use (Pool (RawPool {..}) _) sess = do
   timeout <- do
     delay <- registerDelay $ confAcquisitionTimeout poolConfig
     return $ readTVar delay
