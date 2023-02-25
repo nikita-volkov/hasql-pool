@@ -32,9 +32,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-    - name: Workaround runner image issue
-      # https://github.com/actions/runner-images/issues/7061
-      run: sudo chown -R $USER /usr/local/.ghcup
     - name: ghcup
       run: |
         ghcup install ghc ${{ matrix.ghc }}
