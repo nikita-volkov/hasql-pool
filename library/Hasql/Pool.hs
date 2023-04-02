@@ -14,7 +14,6 @@ where
 import Hasql.Connection (Connection)
 import qualified Hasql.Connection as Connection
 import Hasql.Pool.Prelude
-import Hasql.Session (Session)
 import qualified Hasql.Session as Session
 
 -- | Pool of connections to DB.

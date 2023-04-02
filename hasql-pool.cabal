@@ -84,4 +84,3 @@ test-suite test
     , hasql-pool
     , hspec >=2.6 && <3
     , rerebase >=1.15 && <2
-    , stm >=2.5 && <3

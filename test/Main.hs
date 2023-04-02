@@ -12,6 +12,7 @@ import qualified System.Environment
 import Test.Hspec
 import Prelude
 
+main :: IO ()
 main = do
   connectionSettings <- getConnectionSettings
   hspec . describe "" $ do
