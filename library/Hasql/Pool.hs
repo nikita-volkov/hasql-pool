@@ -56,9 +56,9 @@ data Pool = Pool
 acquire ::
   -- | Pool size.
   Int ->
-  -- | Connection acquisition timeout in microseconds.
+  -- | Connection acquisition timeout.
   DiffTime ->
-  -- | Maximal connection lifetime in microseconds.
+  -- | Maximal connection lifetime.
   DiffTime ->
   -- | Connection settings.
   Connection.Settings ->
@@ -76,9 +76,9 @@ acquire poolSize acqTimeout maxLifetime connectionSettings =
 acquireDynamically ::
   -- | Pool size.
   Int ->
-  -- | Connection acquisition timeout in microseconds.
+  -- | Connection acquisition timeout.
   DiffTime ->
-  -- | Maximal connection lifetime in microseconds.
+  -- | Maximal connection lifetime.
   DiffTime ->
   -- | Action fetching connection settings.
   IO Connection.Settings ->
