@@ -20,7 +20,7 @@ main = do
   let withPool poolSize acqTimeout maxLifetime connectionSettings =
         bracket (acquire poolSize acqTimeout maxLifetime connectionSettings) release
       withDefaultPool =
-        withPool 3 10_000_000 1_800_000_000 connectionSettings
+        withPool 3 10 1_800 connectionSettings
 
   hspec . describe "" $ do
     it "Releases a spot in the pool when there is a query error" $ withDefaultPool $ \pool -> do
@@ -63,12 +63,12 @@ main = do
         setSettingSession "testing.foo" "hello world"
         getSettingSession "testing.foo"
       res `shouldBe` Right (Just "hello world")
-    it "Session variables stay set when a connection gets reused" $ withPool 1 10_000_000 1_800_000_000 connectionSettings $ \pool -> do
+    it "Session variables stay set when a connection gets reused" $ withPool 1 10 1_800 connectionSettings $ \pool -> do
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       res2 <- use pool $ getSettingSession "testing.foo"
       res2 `shouldBe` Right (Just "hello world")
-    it "Releasing the pool resets session variables" $ withPool 1 10_000_000 1_800_000_000 connectionSettings $ \pool -> do
+    it "Releasing the pool resets session variables" $ withPool 1 10 1_800 connectionSettings $ \pool -> do
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       release pool
@@ -76,7 +76,7 @@ main = do
       res `shouldBe` Right Nothing
     it "Times out connection acquisition" $
       -- 1ms timeout
-      withPool 1 1_000 1_800_000_000 connectionSettings $ \pool -> do
+      withPool 1 0.001 1_800 connectionSettings $ \pool -> do
         sleeping <- newEmptyMVar
         t0 <- getCurrentTime
         res <-
@@ -95,7 +95,7 @@ main = do
         diffUTCTime t1 t0 `shouldSatisfy` (< 0.5) -- 0.5s
     it "Passively times out old connections" $
       -- 0.5s connection lifetime
-      withPool 1 10_000_000 500_000 connectionSettings $ \pool -> do
+      withPool 1 10 0.5 connectionSettings $ \pool -> do
         res <- use pool $ setSettingSession "testing.foo" "hello world"
         res `shouldBe` Right ()
         res2 <- use pool $ getSettingSession "testing.foo"
@@ -105,13 +105,13 @@ main = do
         res3 `shouldBe` Right Nothing
     it "Counts active connections" $ do
       (taggedConnectionSettings, appName) <- tagConnection connectionSettings
-      withPool 3 10_000_000 1_800_000_000 taggedConnectionSettings $ \pool -> do
+      withPool 3 10 1_800 taggedConnectionSettings $ \pool -> do
         res <- use pool $ countConnectionsSession appName
         res `shouldBe` Right 1
     it "Times out old connections" $ do
       withDefaultPool $ \countPool -> do
         (taggedConnectionSettings, appName) <- tagConnection connectionSettings
-        withPool 3 10_000_000 500_000 taggedConnectionSettings $ \limitedPool -> do
+        withPool 3 10 0.5 taggedConnectionSettings $ \limitedPool -> do
           res <- use limitedPool $ selectOneSession
           res `shouldBe` Right 1
           res2 <- use countPool $ countConnectionsSession appName

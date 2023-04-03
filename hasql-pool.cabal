@@ -71,6 +71,7 @@ library
     , base >=4.11 && <5
     , hasql >=1.6.0.1 && <1.7
     , stm >=2.5 && <3
+    , time >=1.9 && <2
 
 test-suite test
   import:         base-settings
