@@ -1,8 +1,7 @@
-# 0.8.1
+# 0.9
 
-Connections now have a maximal lifetime, defaulting to 30m and configurable via a new extensible configuration interface. The acquisition timeout is now also non-optional, defaulting to 10s.
-
-Adds `Config`, various setters and `acquireConf`.
+- Maximal lifetime added for connections. Allows to refresh the connections in time cleaning up the resources.
+- The acquisition timeout is now non-optional.
 
 # 0.8.0.7
 
