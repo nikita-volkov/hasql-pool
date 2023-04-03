@@ -1,3 +1,8 @@
+# 0.9
+
+- Maximal lifetime added for connections. Allows to refresh the connections in time cleaning up the resources.
+- The acquisition timeout is now non-optional.
+
 # 0.8.0.7
 
 Fix excessive connections during releases due to race conditions.

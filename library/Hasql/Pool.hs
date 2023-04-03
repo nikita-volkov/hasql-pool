@@ -3,8 +3,8 @@ module Hasql.Pool
     Pool,
     acquire,
     acquireDynamically,
-    release,
     use,
+    release,
 
     -- * Errors
     UsageError (..),
@@ -16,24 +16,40 @@ import qualified Hasql.Connection as Connection
 import Hasql.Pool.Prelude
 import qualified Hasql.Session as Session
 
+-- | A connection tagged with metadata.
+data Conn = Conn
+  { connConnection :: Connection,
+    connCreationTimeNSec :: Word64
+  }
+
+isAlive :: Word64 -> Word64 -> Conn -> Bool
+isAlive maxLifetime now conn =
+  now <= connCreationTimeNSec conn + maxLifetime
+
 -- | Pool of connections to DB.
 data Pool = Pool
-  { -- | Connection settings.
+  { -- | Pool size.
+    poolSize :: Int,
+    -- | Connection settings.
     poolFetchConnectionSettings :: IO Connection.Settings,
     -- | Acquisition timeout, in microseconds.
-    poolAcquisitionTimeout :: Maybe Int,
+    poolAcquisitionTimeout :: Int,
+    -- | Maximal connection lifetime, in nanoseconds.
+    poolMaxLifetime :: Word64,
     -- | Avail connections.
-    poolConnectionQueue :: TQueue Connection,
+    poolConnectionQueue :: TQueue Conn,
     -- | Remaining capacity.
     -- The pool size limits the sum of poolCapacity, the length
     -- of poolConnectionQueue and the number of in-flight
     -- connections.
     poolCapacity :: TVar Int,
     -- | Whether to return a connection to the pool.
-    poolReuse :: TVar (TVar Bool)
+    poolReuseVar :: TVar (TVar Bool),
+    -- | To stop the manager thread via garbage collection.
+    poolReaperRef :: IORef ()
   }
 
--- | Create a connection-pool.
+-- | Create a connection-pool, with default settings.
 --
 -- No connections actually get established by this function. It is delegated
 -- to 'use'.
@@ -41,17 +57,19 @@ acquire ::
   -- | Pool size.
   Int ->
   -- | Connection acquisition timeout in microseconds.
-  Maybe Int ->
+  Int ->
+  -- | Maximal connection lifetime in microseconds.
+  Int ->
   -- | Connection settings.
   Connection.Settings ->
   IO Pool
-acquire poolSize timeout connectionSettings =
-  acquireDynamically poolSize timeout (pure connectionSettings)
+acquire poolSize acqTimeout maxLifetime connectionSettings =
+  acquireDynamically poolSize acqTimeout maxLifetime (pure connectionSettings)
 
 -- | Create a connection-pool.
 --
--- In difference to 'acquire' new settings get fetched each time a connection
--- is created. This may be useful for some security models.
+-- In difference to 'acquire' new connection settings get fetched each
+-- time a connection is created. This may be useful for some security models.
 --
 -- No connections actually get established by this function. It is delegated
 -- to 'use'.
@@ -59,15 +77,37 @@ acquireDynamically ::
   -- | Pool size.
   Int ->
   -- | Connection acquisition timeout in microseconds.
-  Maybe Int ->
+  Int ->
+  -- | Maximal connection lifetime in microseconds.
+  Int ->
   -- | Action fetching connection settings.
   IO Connection.Settings ->
   IO Pool
-acquireDynamically poolSize timeout fetchConnectionSettings = do
-  Pool fetchConnectionSettings timeout
-    <$> newTQueueIO
-    <*> newTVarIO poolSize
-    <*> (newTVarIO =<< newTVarIO True)
+acquireDynamically poolSize acqTimeout maxLifetime fetchConnectionSettings = do
+  connectionQueue <- newTQueueIO
+  capVar <- newTVarIO poolSize
+  reuseVar <- newTVarIO =<< newTVarIO True
+  reaperRef <- newIORef ()
+
+  managerTid <- forkIOWithUnmask $ \unmask -> unmask $ forever $ do
+    threadDelay 1000000
+    now <- getMonotonicTimeNSec
+    join . atomically $ do
+      conns <- flushTQueue connectionQueue
+      let (keep, close) = partition (isAlive maxLifetimeNanos now) conns
+      traverse_ (writeTQueue connectionQueue) keep
+      return $ forM_ close $ \conn -> do
+        Connection.release (connConnection conn)
+        atomically $ modifyTVar' capVar succ
+
+  void . mkWeakIORef reaperRef $ do
+    -- When the pool goes out of scope, stop the manager.
+    killThread managerTid
+
+  return $ Pool poolSize fetchConnectionSettings acqTimeout maxLifetimeNanos connectionQueue capVar reuseVar reaperRef
+  where
+    maxLifetimeNanos =
+      1000 * fromIntegral maxLifetime
 
 -- | Release all the idle connections in the pool, and mark the in-use connections
 -- to be released after use. Any connections acquired after the call will be
@@ -79,13 +119,13 @@ acquireDynamically poolSize timeout fetchConnectionSettings = do
 release :: Pool -> IO ()
 release Pool {..} =
   join . atomically $ do
-    prevReuse <- readTVar poolReuse
+    prevReuse <- readTVar poolReuseVar
     writeTVar prevReuse False
     newReuse <- newTVar True
-    writeTVar poolReuse newReuse
+    writeTVar poolReuseVar newReuse
     conns <- flushTQueue poolConnectionQueue
     return $ forM_ conns $ \conn -> do
-      Connection.release conn
+      Connection.release (connConnection conn)
       atomically $ modifyTVar' poolCapacity succ
 
 -- | Use a connection from the pool to run a session and return the connection
@@ -97,14 +137,11 @@ release Pool {..} =
 -- time one is needed. The error still gets returned from this function.
 use :: Pool -> Session.Session a -> IO (Either UsageError a)
 use Pool {..} sess = do
-  timeout <- case poolAcquisitionTimeout of
-    Just delta -> do
-      delay <- registerDelay delta
-      return $ readTVar delay
-    Nothing ->
-      return $ return False
+  timeout <- do
+    delay <- registerDelay poolAcquisitionTimeout
+    return $ readTVar delay
   join . atomically $ do
-    reuseVar <- readTVar poolReuse
+    reuseVar <- readTVar poolReuseVar
     asum
       [ readTQueue poolConnectionQueue <&> onConn reuseVar,
         do
@@ -123,16 +160,26 @@ use Pool {..} sess = do
   where
     onNewConn reuseVar = do
       settings <- poolFetchConnectionSettings
+      now <- getMonotonicTimeNSec
       connRes <- Connection.acquire settings
       case connRes of
         Left connErr -> do
           atomically $ modifyTVar' poolCapacity succ
           return $ Left $ ConnectionUsageError connErr
-        Right conn -> onConn reuseVar conn
+        Right conn -> onLiveConn reuseVar (Conn conn now)
+
     onConn reuseVar conn = do
+      now <- getMonotonicTimeNSec
+      if isAlive poolMaxLifetime now conn
+        then onLiveConn reuseVar conn
+        else do
+          Connection.release (connConnection conn)
+          onNewConn reuseVar
+
+    onLiveConn reuseVar conn = do
       sessRes <-
-        catch (Session.run sess conn) $ \(err :: SomeException) -> do
-          Connection.release conn
+        catch (Session.run sess (connConnection conn)) $ \(err :: SomeException) -> do
+          Connection.release (connConnection conn)
           atomically $ modifyTVar' poolCapacity succ
           throw err
 
@@ -154,7 +201,7 @@ use Pool {..} sess = do
             if reuse
               then writeTQueue poolConnectionQueue conn $> return ()
               else return $ do
-                Connection.release conn
+                Connection.release (connConnection conn)
                 atomically $ modifyTVar' poolCapacity succ
 
 -- | Union over all errors that 'use' can result in.

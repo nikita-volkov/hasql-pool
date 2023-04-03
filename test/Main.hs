@@ -2,6 +2,7 @@ module Main where
 
 import Control.Concurrent.Async (race)
 import qualified Data.ByteString.Char8 as B8
+import qualified Data.Text as Text
 import qualified Hasql.Connection as Connection
 import qualified Hasql.Decoders as Decoders
 import qualified Hasql.Encoders as Encoders
@@ -9,91 +10,115 @@ import Hasql.Pool
 import qualified Hasql.Session as Session
 import qualified Hasql.Statement as Statement
 import qualified System.Environment
+import qualified System.Random.Stateful as Random
 import Test.Hspec
 import Prelude
 
 main :: IO ()
 main = do
   connectionSettings <- getConnectionSettings
+  let withPool poolSize acqTimeout maxLifetime connectionSettings =
+        bracket (acquire poolSize acqTimeout maxLifetime connectionSettings) release
+      withDefaultPool =
+        withPool 3 10_000_000 1_800_000_000 connectionSettings
+
   hspec . describe "" $ do
-    it "Releases a spot in the pool when there is a query error" $ do
-      pool <- acquire 1 Nothing connectionSettings
+    it "Releases a spot in the pool when there is a query error" $ withDefaultPool $ \pool -> do
       use pool badQuerySession `shouldNotReturn` (Right ())
       use pool selectOneSession `shouldReturn` (Right 1)
-    it "Simulation of connection error works" $ do
-      pool <- acquire 3 Nothing connectionSettings
+    it "Simulation of connection error works" $ withDefaultPool $ \pool -> do
       res <- use pool $ closeConnSession >> selectOneSession
       shouldSatisfy res $ \case
         Left (SessionUsageError (Session.QueryError _ _ (Session.ClientError _))) -> True
         _ -> False
-    it "Connection errors cause eviction of connection" $ do
-      pool <- acquire 3 Nothing connectionSettings
+    it "Connection errors cause eviction of connection" $ withDefaultPool $ \pool -> do
       res <- use pool $ closeConnSession >> selectOneSession
       res <- use pool $ closeConnSession >> selectOneSession
       res <- use pool $ closeConnSession >> selectOneSession
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
-    it "Connection gets returned to the pool after normal use" $ do
-      pool <- acquire 3 Nothing connectionSettings
+    it "Connection gets returned to the pool after normal use" $ withDefaultPool $ \pool -> do
       res <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
-    it "Connection gets returned to the pool after non-connection error" $ do
-      pool <- acquire 3 Nothing connectionSettings
+    it "Connection gets returned to the pool after non-connection error" $ withDefaultPool $ \pool -> do
       res <- use pool $ badQuerySession
       res <- use pool $ badQuerySession
       res <- use pool $ badQuerySession
       res <- use pool $ badQuerySession
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
-    it "The pool remains usable after release" $ do
-      pool <- acquire 1 Nothing connectionSettings
+    it "The pool remains usable after release" $ withDefaultPool $ \pool -> do
       res <- use pool $ selectOneSession
       release pool
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
-    it "Getting and setting session variables works" $ do
-      pool <- acquire 1 Nothing connectionSettings
+    it "Getting and setting session variables works" $ withDefaultPool $ \pool -> do
       res <- use pool $ getSettingSession "testing.foo"
       res `shouldBe` Right Nothing
       res <- use pool $ do
         setSettingSession "testing.foo" "hello world"
         getSettingSession "testing.foo"
       res `shouldBe` Right (Just "hello world")
-    it "Session variables stay set when a connection gets reused" $ do
-      pool <- acquire 1 Nothing connectionSettings
+    it "Session variables stay set when a connection gets reused" $ withPool 1 10_000_000 1_800_000_000 connectionSettings $ \pool -> do
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       res2 <- use pool $ getSettingSession "testing.foo"
       res2 `shouldBe` Right (Just "hello world")
-    it "Releasing the pool resets session variables" $ do
-      pool <- acquire 1 Nothing connectionSettings
+    it "Releasing the pool resets session variables" $ withPool 1 10_000_000 1_800_000_000 connectionSettings $ \pool -> do
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       release pool
       res <- use pool $ getSettingSession "testing.foo"
       res `shouldBe` Right Nothing
-    it "Times out connection acquisition" $ do
-      pool <- acquire 1 (Just 1000) connectionSettings -- 1ms timeout
-      sleeping <- newEmptyMVar
-      t0 <- getCurrentTime
-      res <-
-        race
-          ( use pool $
-              liftIO $ do
-                putMVar sleeping ()
-                threadDelay 1000000 -- 1s
-          )
-          ( do
-              takeMVar sleeping
-              use pool $ selectOneSession
-          )
-      t1 <- getCurrentTime
-      res `shouldBe` Right (Left AcquisitionTimeoutUsageError)
-      diffUTCTime t1 t0 `shouldSatisfy` (< 0.5) -- 0.5s
+    it "Times out connection acquisition" $
+      -- 1ms timeout
+      withPool 1 1_000 1_800_000_000 connectionSettings $ \pool -> do
+        sleeping <- newEmptyMVar
+        t0 <- getCurrentTime
+        res <-
+          race
+            ( use pool $
+                liftIO $ do
+                  putMVar sleeping ()
+                  threadDelay 1_000_000 -- 1s
+            )
+            ( do
+                takeMVar sleeping
+                use pool $ selectOneSession
+            )
+        t1 <- getCurrentTime
+        res `shouldBe` Right (Left AcquisitionTimeoutUsageError)
+        diffUTCTime t1 t0 `shouldSatisfy` (< 0.5) -- 0.5s
+    it "Passively times out old connections" $
+      -- 0.5s connection lifetime
+      withPool 1 10_000_000 500_000 connectionSettings $ \pool -> do
+        res <- use pool $ setSettingSession "testing.foo" "hello world"
+        res `shouldBe` Right ()
+        res2 <- use pool $ getSettingSession "testing.foo"
+        res2 `shouldBe` Right (Just "hello world")
+        threadDelay 1_000_000 -- 1s
+        res3 <- use pool $ getSettingSession "testing.foo"
+        res3 `shouldBe` Right Nothing
+    it "Counts active connections" $ do
+      (taggedConnectionSettings, appName) <- tagConnection connectionSettings
+      withPool 3 10_000_000 1_800_000_000 taggedConnectionSettings $ \pool -> do
+        res <- use pool $ countConnectionsSession appName
+        res `shouldBe` Right 1
+    it "Times out old connections" $ do
+      withDefaultPool $ \countPool -> do
+        (taggedConnectionSettings, appName) <- tagConnection connectionSettings
+        withPool 3 10_000_000 500_000 taggedConnectionSettings $ \limitedPool -> do
+          res <- use limitedPool $ selectOneSession
+          res `shouldBe` Right 1
+          res2 <- use countPool $ countConnectionsSession appName
+          res2 `shouldBe` Right 1
+          threadDelay 1_000_000 -- 1s
+          res3 <- use countPool $ countConnectionsSession appName
+          res3 `shouldBe` Right 0
 
 getConnectionSettings :: IO Connection.Settings
 getConnectionSettings =
@@ -111,6 +136,12 @@ getConnectionSettings =
     setting label getEnv = do
       val <- getEnv
       return $ (\v -> label <> "=" <> v) <$> val
+
+tagConnection :: Connection.Settings -> IO (Connection.Settings, Text)
+tagConnection connectionSettings = do
+  tag <- Random.uniformWord32 Random.globalStdGen
+  let appName = "hasql-pool-test-" <> show tag
+  return (connectionSettings <> " application_name=" <> B8.pack appName, Text.pack appName)
 
 selectOneSession :: Session.Session Int64
 selectOneSession =
@@ -146,3 +177,11 @@ getSettingSession name = do
     statement = Statement.Statement "SELECT current_setting($1, true)" encoder decoder True
     encoder = Encoders.param (Encoders.nonNullable Encoders.text)
     decoder = Decoders.singleRow (Decoders.column (Decoders.nullable Decoders.text))
+
+countConnectionsSession :: Text -> Session.Session Int64
+countConnectionsSession appName = do
+  Session.statement appName statement
+  where
+    statement = Statement.Statement "SELECT count(*) FROM pg_stat_activity WHERE application_name = $1" encoder decoder True
+    encoder = Encoders.param (Encoders.nonNullable Encoders.text)
+    decoder = Decoders.singleRow (Decoders.column (Decoders.nonNullable Decoders.int8))

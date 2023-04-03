@@ -43,6 +43,7 @@ common base-settings
     MagicHash
     MultiParamTypeClasses
     MultiWayIf
+    NumericUnderscores
     OverloadedStrings
     ParallelListComp
     PatternGuards
@@ -82,4 +83,5 @@ test-suite test
     , hasql
     , hasql-pool
     , hspec >=2.6 && <3
+    , random >=1.2 && <2
     , rerebase >=1.15 && <2
