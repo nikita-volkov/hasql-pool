@@ -67,7 +67,6 @@ library
   exposed-modules: Hasql.Pool
   other-modules:   Hasql.Pool.Prelude
   build-depends:
-    , async >=2.2 && <3
     , base >=4.11 && <5
     , hasql >=1.6.0.1 && <1.7
     , stm >=2.5 && <3
@@ -86,4 +85,3 @@ test-suite test
     , hspec >=2.6 && <3
     , random >=1.2 && <2
     , rerebase >=1.15 && <2
-    , stm >=2.5 && <3

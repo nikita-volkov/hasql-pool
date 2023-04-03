@@ -21,7 +21,6 @@ module Hasql.Pool
   )
 where
 
-import qualified Control.Concurrent.Async as Async
 import GHC.Clock (getMonotonicTimeNSec)
 import Hasql.Connection (Connection)
 import qualified Hasql.Connection as Connection

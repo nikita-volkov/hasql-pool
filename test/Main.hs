@@ -10,7 +10,6 @@ import Hasql.Pool
 import qualified Hasql.Session as Session
 import qualified Hasql.Statement as Statement
 import qualified System.Environment
-import qualified System.Random as Random
 import qualified System.Random.Stateful as Random
 import Test.Hspec
 import Prelude
