@@ -43,6 +43,7 @@ common base-settings
     MagicHash
     MultiParamTypeClasses
     MultiWayIf
+    NumericUnderscores
     OverloadedStrings
     ParallelListComp
     PatternGuards

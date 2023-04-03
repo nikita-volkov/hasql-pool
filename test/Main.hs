@@ -17,56 +17,58 @@ import Prelude
 main :: IO ()
 main = do
   connectionSettings <- getConnectionSettings
-  let config = setSize 3 . setConnectionSettings connectionSettings $ defaultConfig
-      withPoolConf conf = bracket (acquireConf conf) release
+  let withPool poolSize acqTimeout maxLifetime connectionSettings =
+        bracket (acquire poolSize acqTimeout maxLifetime connectionSettings) release
+      withDefaultPool =
+        withPool 3 10_000_000 1_800_000_000 connectionSettings
 
   hspec . describe "" $ do
-    it "Releases a spot in the pool when there is a query error" $ withPoolConf config $ \pool -> do
+    it "Releases a spot in the pool when there is a query error" $ withDefaultPool $ \pool -> do
       use pool badQuerySession `shouldNotReturn` (Right ())
       use pool selectOneSession `shouldReturn` (Right 1)
-    it "Simulation of connection error works" $ withPoolConf config $ \pool -> do
+    it "Simulation of connection error works" $ withDefaultPool $ \pool -> do
       res <- use pool $ closeConnSession >> selectOneSession
       shouldSatisfy res $ \case
         Left (SessionUsageError (Session.QueryError _ _ (Session.ClientError _))) -> True
         _ -> False
-    it "Connection errors cause eviction of connection" $ withPoolConf config $ \pool -> do
+    it "Connection errors cause eviction of connection" $ withDefaultPool $ \pool -> do
       res <- use pool $ closeConnSession >> selectOneSession
       res <- use pool $ closeConnSession >> selectOneSession
       res <- use pool $ closeConnSession >> selectOneSession
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
-    it "Connection gets returned to the pool after normal use" $ withPoolConf config $ \pool -> do
+    it "Connection gets returned to the pool after normal use" $ withDefaultPool $ \pool -> do
       res <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
-    it "Connection gets returned to the pool after non-connection error" $ withPoolConf config $ \pool -> do
+    it "Connection gets returned to the pool after non-connection error" $ withDefaultPool $ \pool -> do
       res <- use pool $ badQuerySession
       res <- use pool $ badQuerySession
       res <- use pool $ badQuerySession
       res <- use pool $ badQuerySession
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
-    it "The pool remains usable after release" $ withPoolConf config $ \pool -> do
+    it "The pool remains usable after release" $ withDefaultPool $ \pool -> do
       res <- use pool $ selectOneSession
       release pool
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
-    it "Getting and setting session variables works" $ withPoolConf config $ \pool -> do
+    it "Getting and setting session variables works" $ withDefaultPool $ \pool -> do
       res <- use pool $ getSettingSession "testing.foo"
       res `shouldBe` Right Nothing
       res <- use pool $ do
         setSettingSession "testing.foo" "hello world"
         getSettingSession "testing.foo"
       res `shouldBe` Right (Just "hello world")
-    it "Session variables stay set when a connection gets reused" $ withPoolConf (setSize 1 config) $ \pool -> do
+    it "Session variables stay set when a connection gets reused" $ withPool 1 10_000_000 1_800_000_000 connectionSettings $ \pool -> do
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       res2 <- use pool $ getSettingSession "testing.foo"
       res2 `shouldBe` Right (Just "hello world")
-    it "Releasing the pool resets session variables" $ withPoolConf (setSize 1 config) $ \pool -> do
+    it "Releasing the pool resets session variables" $ withPool 1 10_000_000 1_800_000_000 connectionSettings $ \pool -> do
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       release pool
@@ -74,7 +76,7 @@ main = do
       res `shouldBe` Right Nothing
     it "Times out connection acquisition" $
       -- 1ms timeout
-      withPoolConf (setSize 1 . setAcquisitionTimeout 1000 $ config) $ \pool -> do
+      withPool 1 1_000 1_800_000_000 connectionSettings $ \pool -> do
         sleeping <- newEmptyMVar
         t0 <- getCurrentTime
         res <-
@@ -82,7 +84,7 @@ main = do
             ( use pool $
                 liftIO $ do
                   putMVar sleeping ()
-                  threadDelay 1000000 -- 1s
+                  threadDelay 1_000_000 -- 1s
             )
             ( do
                 takeMVar sleeping
@@ -93,33 +95,30 @@ main = do
         diffUTCTime t1 t0 `shouldSatisfy` (< 0.5) -- 0.5s
     it "Passively times out old connections" $
       -- 0.5s connection lifetime
-      withPoolConf (setSize 1 . setMaxLifetime 500000 $ config) $ \pool -> do
+      withPool 1 10_000_000 500_000 connectionSettings $ \pool -> do
         res <- use pool $ setSettingSession "testing.foo" "hello world"
         res `shouldBe` Right ()
         res2 <- use pool $ getSettingSession "testing.foo"
         res2 `shouldBe` Right (Just "hello world")
-        threadDelay 1000000 -- 1s
+        threadDelay 1_000_000 -- 1s
         res3 <- use pool $ getSettingSession "testing.foo"
         res3 `shouldBe` Right Nothing
     it "Counts active connections" $ do
       (taggedConnectionSettings, appName) <- tagConnection connectionSettings
-      withPoolConf (setConnectionSettings taggedConnectionSettings config) $ \pool -> do
+      withPool 3 10_000_000 1_800_000_000 taggedConnectionSettings $ \pool -> do
         res <- use pool $ countConnectionsSession appName
         res `shouldBe` Right 1
     it "Times out old connections" $ do
-      withPoolConf config $ \countPool -> do
+      withDefaultPool $ \countPool -> do
         (taggedConnectionSettings, appName) <- tagConnection connectionSettings
-        withPoolConf
-          (setManageInterval 10000 . setMaxLifetime 500000 . setConnectionSettings taggedConnectionSettings $ config)
-          ( \limitedPool -> do
-              res <- use limitedPool $ selectOneSession
-              res `shouldBe` Right 1
-              res2 <- use countPool $ countConnectionsSession appName
-              res2 `shouldBe` Right 1
-              threadDelay 1000000 -- 1s
-              res3 <- use countPool $ countConnectionsSession appName
-              res3 `shouldBe` Right 0
-          )
+        withPool 3 10_000_000 500_000 taggedConnectionSettings $ \limitedPool -> do
+          res <- use limitedPool $ selectOneSession
+          res `shouldBe` Right 1
+          res2 <- use countPool $ countConnectionsSession appName
+          res2 `shouldBe` Right 1
+          threadDelay 1_000_000 -- 1s
+          res3 <- use countPool $ countConnectionsSession appName
+          res3 `shouldBe` Right 0
 
 getConnectionSettings :: IO Connection.Settings
 getConnectionSettings =
