@@ -11,7 +11,6 @@ module Hasql.Pool
   )
 where
 
-import GHC.Clock (getMonotonicTimeNSec)
 import Hasql.Connection (Connection)
 import qualified Hasql.Connection as Connection
 import Hasql.Pool.Prelude
