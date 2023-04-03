@@ -15,6 +15,7 @@ import qualified System.Random.Stateful as Random
 import Test.Hspec
 import Prelude
 
+main :: IO ()
 main = do
   connectionSettings <- getConnectionSettings
   let config = setSize 3 . setConnectionSettings connectionSettings $ defaultConfig
