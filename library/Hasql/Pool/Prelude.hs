@@ -40,6 +40,7 @@ import Data.Proxy as Exports
 import Data.Ratio as Exports
 import Data.STRef as Exports
 import Data.String as Exports
+import Data.Time as Exports
 import Data.Traversable as Exports
 import Data.Tuple as Exports
 import Data.Unique as Exports

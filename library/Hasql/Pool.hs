@@ -56,10 +56,10 @@ data Pool = Pool
 acquire ::
   -- | Pool size.
   Int ->
-  -- | Connection acquisition timeout in microseconds.
-  Int ->
-  -- | Maximal connection lifetime in microseconds.
-  Int ->
+  -- | Connection acquisition timeout.
+  DiffTime ->
+  -- | Maximal connection lifetime.
+  DiffTime ->
   -- | Connection settings.
   Connection.Settings ->
   IO Pool
@@ -76,10 +76,10 @@ acquire poolSize acqTimeout maxLifetime connectionSettings =
 acquireDynamically ::
   -- | Pool size.
   Int ->
-  -- | Connection acquisition timeout in microseconds.
-  Int ->
-  -- | Maximal connection lifetime in microseconds.
-  Int ->
+  -- | Connection acquisition timeout.
+  DiffTime ->
+  -- | Maximal connection lifetime.
+  DiffTime ->
   -- | Action fetching connection settings.
   IO Connection.Settings ->
   IO Pool
@@ -104,10 +104,12 @@ acquireDynamically poolSize acqTimeout maxLifetime fetchConnectionSettings = do
     -- When the pool goes out of scope, stop the manager.
     killThread managerTid
 
-  return $ Pool poolSize fetchConnectionSettings acqTimeout maxLifetimeNanos connectionQueue capVar reuseVar reaperRef
+  return $ Pool poolSize fetchConnectionSettings acqTimeoutMicros maxLifetimeNanos connectionQueue capVar reuseVar reaperRef
   where
+    acqTimeoutMicros =
+      div (fromIntegral (diffTimeToPicoseconds acqTimeout)) 1_000_000
     maxLifetimeNanos =
-      1000 * fromIntegral maxLifetime
+      div (fromIntegral (diffTimeToPicoseconds maxLifetime)) 1_000
 
 -- | Release all the idle connections in the pool, and mark the in-use connections
 -- to be released after use. Any connections acquired after the call will be
