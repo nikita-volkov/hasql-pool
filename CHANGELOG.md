@@ -2,6 +2,7 @@
 
 - Maximal lifetime added for connections. Allows to refresh the connections in time cleaning up the resources.
 - The acquisition timeout is now non-optional.
+- Moved to `DiffTime` for timeouts.
 
 # 0.8.0.7
 
