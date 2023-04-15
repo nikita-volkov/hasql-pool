@@ -137,6 +137,9 @@ release Pool {..} =
 -- connection. In such case the connection does not get returned to the pool
 -- and a slot gets freed up for a new connection to be established the next
 -- time one is needed. The error still gets returned from this function.
+--
+-- __Warning:__ Due to the mechanism mentioned above you should avoid consuming
+-- errors within sessions.
 use :: Pool -> Session.Session a -> IO (Either UsageError a)
 use Pool {..} sess = do
   timeout <- do
