@@ -19,12 +19,14 @@ import qualified Hasql.Session as Session
 -- | A connection tagged with metadata.
 data Conn = Conn
   { connConnection :: Connection,
-    connCreationTimeNSec :: Word64
+    connCreationTimeNSec :: Word64,
+    connUseTimeNSec :: Word64
   }
 
-isAlive :: Word64 -> Word64 -> Conn -> Bool
-isAlive maxLifetime now conn =
-  now <= connCreationTimeNSec conn + maxLifetime
+isAlive :: Word64 -> Word64 -> Word64 -> Conn -> Bool
+isAlive maxLifetime maxIdletime now Conn {..} =
+  now <= connCreationTimeNSec + maxLifetime
+    && now <= connUseTimeNSec + maxIdletime
 
 -- | Pool of connections to DB.
 data Pool = Pool
@@ -36,6 +38,8 @@ data Pool = Pool
     poolAcquisitionTimeout :: Int,
     -- | Maximal connection lifetime, in nanoseconds.
     poolMaxLifetime :: Word64,
+    -- | Maximal connection idle time, in nanoseconds.
+    poolMaxIdletime :: Word64,
     -- | Avail connections.
     poolConnectionQueue :: TQueue Conn,
     -- | Remaining capacity.
@@ -60,11 +64,13 @@ acquire ::
   DiffTime ->
   -- | Maximal connection lifetime.
   DiffTime ->
+  -- | Maximal connection idle time.
+  DiffTime ->
   -- | Connection settings.
   Connection.Settings ->
   IO Pool
-acquire poolSize acqTimeout maxLifetime connectionSettings =
-  acquireDynamically poolSize acqTimeout maxLifetime (pure connectionSettings)
+acquire poolSize acqTimeout maxLifetime maxIdletime connectionSettings =
+  acquireDynamically poolSize acqTimeout maxLifetime maxIdletime (pure connectionSettings)
 
 -- | Create a connection-pool.
 --
@@ -80,10 +86,12 @@ acquireDynamically ::
   DiffTime ->
   -- | Maximal connection lifetime.
   DiffTime ->
+  -- | Maximal connection idle time.
+  DiffTime ->
   -- | Action fetching connection settings.
   IO Connection.Settings ->
   IO Pool
-acquireDynamically poolSize acqTimeout maxLifetime fetchConnectionSettings = do
+acquireDynamically poolSize acqTimeout maxLifetime maxIdletime fetchConnectionSettings = do
   connectionQueue <- newTQueueIO
   capVar <- newTVarIO poolSize
   reuseVar <- newTVarIO =<< newTVarIO True
@@ -94,7 +102,7 @@ acquireDynamically poolSize acqTimeout maxLifetime fetchConnectionSettings = do
     now <- getMonotonicTimeNSec
     join . atomically $ do
       conns <- flushTQueue connectionQueue
-      let (keep, close) = partition (isAlive maxLifetimeNanos now) conns
+      let (keep, close) = partition (isAlive maxLifetimeNanos maxIdletimeNanos now) conns
       traverse_ (writeTQueue connectionQueue) keep
       return $ forM_ close $ \conn -> do
         Connection.release (connConnection conn)
@@ -104,12 +112,14 @@ acquireDynamically poolSize acqTimeout maxLifetime fetchConnectionSettings = do
     -- When the pool goes out of scope, stop the manager.
     killThread managerTid
 
-  return $ Pool poolSize fetchConnectionSettings acqTimeoutMicros maxLifetimeNanos connectionQueue capVar reuseVar reaperRef
+  return $ Pool poolSize fetchConnectionSettings acqTimeoutMicros maxLifetimeNanos maxIdletimeNanos connectionQueue capVar reuseVar reaperRef
   where
     acqTimeoutMicros =
       div (fromIntegral (diffTimeToPicoseconds acqTimeout)) 1_000_000
     maxLifetimeNanos =
       div (fromIntegral (diffTimeToPicoseconds maxLifetime)) 1_000
+    maxIdletimeNanos =
+      div (fromIntegral (diffTimeToPicoseconds maxIdletime)) 1_000
 
 -- | Release all the idle connections in the pool, and mark the in-use connections
 -- to be released after use. Any connections acquired after the call will be
@@ -171,12 +181,12 @@ use Pool {..} sess = do
         Left connErr -> do
           atomically $ modifyTVar' poolCapacity succ
           return $ Left $ ConnectionUsageError connErr
-        Right conn -> onLiveConn reuseVar (Conn conn now)
+        Right conn -> onLiveConn reuseVar (Conn conn now now)
 
     onConn reuseVar conn = do
       now <- getMonotonicTimeNSec
-      if isAlive poolMaxLifetime now conn
-        then onLiveConn reuseVar conn
+      if isAlive poolMaxLifetime poolMaxIdletime now conn
+        then onLiveConn reuseVar conn {connUseTimeNSec = now}
         else do
           Connection.release (connConnection conn)
           onNewConn reuseVar

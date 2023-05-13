@@ -17,10 +17,10 @@ import Prelude
 main :: IO ()
 main = do
   connectionSettings <- getConnectionSettings
-  let withPool poolSize acqTimeout maxLifetime connectionSettings =
-        bracket (acquire poolSize acqTimeout maxLifetime connectionSettings) release
+  let withPool poolSize acqTimeout maxLifetime maxIdletime connectionSettings =
+        bracket (acquire poolSize acqTimeout maxLifetime maxIdletime connectionSettings) release
       withDefaultPool =
-        withPool 3 10 1_800 connectionSettings
+        withPool 3 10 1_800 1_800 connectionSettings
 
   hspec . describe "" $ do
     it "Releases a spot in the pool when there is a query error" $ withDefaultPool $ \pool -> do
@@ -63,12 +63,12 @@ main = do
         setSettingSession "testing.foo" "hello world"
         getSettingSession "testing.foo"
       res `shouldBe` Right (Just "hello world")
-    it "Session variables stay set when a connection gets reused" $ withPool 1 10 1_800 connectionSettings $ \pool -> do
+    it "Session variables stay set when a connection gets reused" $ withPool 1 10 1_800 1_800 connectionSettings $ \pool -> do
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       res2 <- use pool $ getSettingSession "testing.foo"
       res2 `shouldBe` Right (Just "hello world")
-    it "Releasing the pool resets session variables" $ withPool 1 10 1_800 connectionSettings $ \pool -> do
+    it "Releasing the pool resets session variables" $ withPool 1 10 1_800 1_800 connectionSettings $ \pool -> do
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       release pool
@@ -76,7 +76,7 @@ main = do
       res `shouldBe` Right Nothing
     it "Times out connection acquisition" $
       -- 1ms timeout
-      withPool 1 0.001 1_800 connectionSettings $ \pool -> do
+      withPool 1 0.001 1_800 1_800 connectionSettings $ \pool -> do
         sleeping <- newEmptyMVar
         t0 <- getCurrentTime
         res <-
@@ -93,9 +93,9 @@ main = do
         t1 <- getCurrentTime
         res `shouldBe` Right (Left AcquisitionTimeoutUsageError)
         diffUTCTime t1 t0 `shouldSatisfy` (< 0.5) -- 0.5s
-    it "Passively times out old connections" $
+    it "Passively times out old connections (maxLifetime)" $
       -- 0.5s connection lifetime
-      withPool 1 10 0.5 connectionSettings $ \pool -> do
+      withPool 1 10 0.5 1_800 connectionSettings $ \pool -> do
         res <- use pool $ setSettingSession "testing.foo" "hello world"
         res `shouldBe` Right ()
         res2 <- use pool $ getSettingSession "testing.foo"
@@ -105,13 +105,14 @@ main = do
         res3 `shouldBe` Right Nothing
     it "Counts active connections" $ do
       (taggedConnectionSettings, appName) <- tagConnection connectionSettings
-      withPool 3 10 1_800 taggedConnectionSettings $ \pool -> do
+      withPool 3 10 1_800 1_800 taggedConnectionSettings $ \pool -> do
         res <- use pool $ countConnectionsSession appName
         res `shouldBe` Right 1
-    it "Times out old connections" $ do
+
+    it "Actively times out old connections (maxLifetime)" $ do
       withDefaultPool $ \countPool -> do
         (taggedConnectionSettings, appName) <- tagConnection connectionSettings
-        withPool 3 10 0.5 taggedConnectionSettings $ \limitedPool -> do
+        withPool 3 10 0.5 1_800 taggedConnectionSettings $ \limitedPool -> do
           res <- use limitedPool $ selectOneSession
           res `shouldBe` Right 1
           res2 <- use countPool $ countConnectionsSession appName
@@ -119,6 +120,24 @@ main = do
           threadDelay 1_000_000 -- 1s
           res3 <- use countPool $ countConnectionsSession appName
           res3 `shouldBe` Right 0
+    it "Times out old connections (maxIdletime)" $ do
+      -- 0.5s connection idle time
+      withPool 1 10 1_800 0.5 connectionSettings $ \pool -> do
+        res <- use pool $ setSettingSession "testing.foo" "hello world"
+        res `shouldBe` Right ()
+        res2 <- use pool $ getSettingSession "testing.foo"
+        res2 `shouldBe` Right (Just "hello world")
+        -- busy sleep, to keep connection alive
+        forM_ [1 .. 10] $ \_ -> do
+          r <- use pool $ selectOneSession
+          r `shouldBe` Right 1
+          threadDelay 100_000 -- 0.1s
+        res3 <- use pool $ getSettingSession "testing.foo"
+        res3 `shouldBe` Right (Just "hello world")
+        -- idle sleep, connection times out
+        threadDelay 1_000_000 -- 1s
+        res4 <- use pool $ getSettingSession "testing.foo"
+        res4 `shouldBe` Right Nothing
 
 getConnectionSettings :: IO Connection.Settings
 getConnectionSettings =
