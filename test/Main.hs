@@ -74,15 +74,18 @@ main = do
       release pool
       res <- use pool $ getSettingSession "testing.foo"
       res `shouldBe` Right Nothing
-    it "Times out connection acquisition" $
+    it "Times out connection acquisition"
+      $
       -- 1ms timeout
-      withPool 1 0.001 1_800 1_800 connectionSettings $ \pool -> do
+      withPool 1 0.001 1_800 1_800 connectionSettings
+      $ \pool -> do
         sleeping <- newEmptyMVar
         t0 <- getCurrentTime
         res <-
           race
-            ( use pool $
-                liftIO $ do
+            ( use pool
+                $ liftIO
+                $ do
                   putMVar sleeping ()
                   threadDelay 1_000_000 -- 1s
             )
@@ -93,9 +96,11 @@ main = do
         t1 <- getCurrentTime
         res `shouldBe` Right (Left AcquisitionTimeoutUsageError)
         diffUTCTime t1 t0 `shouldSatisfy` (< 0.5) -- 0.5s
-    it "Passively times out old connections (maxLifetime)" $
+    it "Passively times out old connections (maxLifetime)"
+      $
       -- 0.5s connection lifetime
-      withPool 1 10 0.5 1_800 connectionSettings $ \pool -> do
+      withPool 1 10 0.5 1_800 connectionSettings
+      $ \pool -> do
         res <- use pool $ setSettingSession "testing.foo" "hello world"
         res `shouldBe` Right ()
         res2 <- use pool $ getSettingSession "testing.foo"
@@ -141,12 +146,13 @@ main = do
 
 getConnectionSettings :: IO Connection.Settings
 getConnectionSettings =
-  B8.unwords . catMaybes
+  B8.unwords
+    . catMaybes
     <$> sequence
       [ setting "host" $ defaultEnv "POSTGRES_HOST" "localhost",
         setting "port" $ defaultEnv "POSTGRES_PORT" "5432",
         setting "user" $ defaultEnv "POSTGRES_USER" "postgres",
-        setting "password" $ maybeEnv "POSTGRES_PASSWORD",
+        setting "password" $ defaultEnv "POSTGRES_PASSWORD" "postgres",
         setting "dbname" $ defaultEnv "POSTGRES_DBNAME" "postgres"
       ]
   where
