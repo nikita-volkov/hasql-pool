@@ -25,8 +25,12 @@ data Conn = Conn
 
 isAlive :: Word64 -> Word64 -> Word64 -> Conn -> Bool
 isAlive maxLifetime maxIdletime now Conn {..} =
-  now <= connCreationTimeNSec + maxLifetime
-    && now <= connUseTimeNSec + maxIdletime
+  now
+    <= connCreationTimeNSec
+    + maxLifetime
+    && now
+    <= connUseTimeNSec
+    + maxIdletime
 
 -- | Pool of connections to DB.
 data Pool = Pool
