@@ -152,7 +152,7 @@ getConnectionSettings =
       [ setting "host" $ defaultEnv "POSTGRES_HOST" "localhost",
         setting "port" $ defaultEnv "POSTGRES_PORT" "5432",
         setting "user" $ defaultEnv "POSTGRES_USER" "postgres",
-        setting "password" $ maybeEnv "POSTGRES_PASSWORD",
+        setting "password" $ defaultEnv "POSTGRES_PASSWORD" "postgres",
         setting "dbname" $ defaultEnv "POSTGRES_DBNAME" "postgres"
       ]
   where
