@@ -17,19 +17,19 @@ import Hasql.Pool.Prelude
 import qualified Hasql.Session as Session
 
 -- | A connection tagged with metadata.
-data Conn = Conn
-  { connConnection :: Connection,
-    connCreationTimeNSec :: Word64,
-    connUseTimeNSec :: Word64
+data Entry = Entry
+  { entryConnection :: Connection,
+    entryCreationTimeNSec :: Word64,
+    entryUseTimeNSec :: Word64
   }
 
-isAlive :: Word64 -> Word64 -> Word64 -> Conn -> Bool
-isAlive maxLifetime maxIdletime now Conn {..} =
+entryIsAlive :: Word64 -> Word64 -> Word64 -> Entry -> Bool
+entryIsAlive maxLifetime maxIdletime now Entry {..} =
   now
-    <= connCreationTimeNSec
+    <= entryCreationTimeNSec
     + maxLifetime
     && now
-    <= connUseTimeNSec
+    <= entryUseTimeNSec
     + maxIdletime
 
 -- | Pool of connections to DB.
@@ -45,7 +45,7 @@ data Pool = Pool
     -- | Maximal connection idle time, in nanoseconds.
     poolMaxIdletime :: Word64,
     -- | Avail connections.
-    poolConnectionQueue :: TQueue Conn,
+    poolConnectionQueue :: TQueue Entry,
     -- | Remaining capacity.
     -- The pool size limits the sum of poolCapacity, the length
     -- of poolConnectionQueue and the number of in-flight
@@ -105,11 +105,11 @@ acquireDynamically poolSize acqTimeout maxLifetime maxIdletime fetchConnectionSe
     threadDelay 1000000
     now <- getMonotonicTimeNSec
     join . atomically $ do
-      conns <- flushTQueue connectionQueue
-      let (keep, close) = partition (isAlive maxLifetimeNanos maxIdletimeNanos now) conns
+      entries <- flushTQueue connectionQueue
+      let (keep, close) = partition (entryIsAlive maxLifetimeNanos maxIdletimeNanos now) entries
       traverse_ (writeTQueue connectionQueue) keep
-      return $ forM_ close $ \conn -> do
-        Connection.release (connConnection conn)
+      return $ forM_ close $ \entry -> do
+        Connection.release (entryConnection entry)
         atomically $ modifyTVar' capVar succ
 
   void . mkWeakIORef reaperRef $ do
@@ -139,9 +139,9 @@ release Pool {..} =
     writeTVar prevReuse False
     newReuse <- newTVar True
     writeTVar poolReuseVar newReuse
-    conns <- flushTQueue poolConnectionQueue
-    return $ forM_ conns $ \conn -> do
-      Connection.release (connConnection conn)
+    entries <- flushTQueue poolConnectionQueue
+    return $ forM_ entries $ \entry -> do
+      Connection.release (entryConnection entry)
       atomically $ modifyTVar' poolCapacity succ
 
 -- | Use a connection from the pool to run a session and return the connection
@@ -185,32 +185,31 @@ use Pool {..} sess = do
         Left connErr -> do
           atomically $ modifyTVar' poolCapacity succ
           return $ Left $ ConnectionUsageError connErr
-        Right conn -> onLiveConn reuseVar (Conn conn now now)
+        Right entry -> onLiveConn reuseVar (Entry entry now now)
 
-    onConn reuseVar conn = do
+    onConn reuseVar entry = do
       now <- getMonotonicTimeNSec
-      if isAlive poolMaxLifetime poolMaxIdletime now conn
-        then onLiveConn reuseVar conn {connUseTimeNSec = now}
+      if entryIsAlive poolMaxLifetime poolMaxIdletime now entry
+        then onLiveConn reuseVar entry {entryUseTimeNSec = now}
         else do
-          Connection.release (connConnection conn)
+          Connection.release (entryConnection entry)
           onNewConn reuseVar
 
-    onLiveConn reuseVar conn = do
-      sessRes <-
-        catch (Session.run sess (connConnection conn)) $ \(err :: SomeException) -> do
-          Connection.release (connConnection conn)
-          atomically $ modifyTVar' poolCapacity succ
-          throw err
+    onLiveConn reuseVar entry = do
+      sessRes <- try @SomeException (Session.run sess (entryConnection entry))
 
       case sessRes of
-        Left err -> case err of
+        Left exc -> do
+          returnConn
+          throwIO exc
+        Right (Left err) -> case err of
           Session.QueryError _ _ (Session.ClientError _) -> do
             atomically $ modifyTVar' poolCapacity succ
             return $ Left $ SessionUsageError err
           _ -> do
             returnConn
             return $ Left $ SessionUsageError err
-        Right res -> do
+        Right (Right res) -> do
           returnConn
           return $ Right res
       where
@@ -218,9 +217,9 @@ use Pool {..} sess = do
           join . atomically $ do
             reuse <- readTVar reuseVar
             if reuse
-              then writeTQueue poolConnectionQueue conn $> return ()
+              then writeTQueue poolConnectionQueue entry $> return ()
               else return $ do
-                Connection.release (connConnection conn)
+                Connection.release (entryConnection entry)
                 atomically $ modifyTVar' poolCapacity succ
 
 -- | Union over all errors that 'use' can result in.
