@@ -8,11 +8,17 @@ module Hasql.Pool
 
     -- * Errors
     UsageError (..),
+
+    -- * Observations
+    Observation (..),
+    ReleaseReason (..),
   )
 where
 
+import qualified Data.UUID.V4 as Uuid
 import Hasql.Connection (Connection)
 import qualified Hasql.Connection as Connection
+import Hasql.Pool.Observation
 import Hasql.Pool.Prelude
 import qualified Hasql.Session as Session
 
@@ -20,17 +26,17 @@ import qualified Hasql.Session as Session
 data Entry = Entry
   { entryConnection :: Connection,
     entryCreationTimeNSec :: Word64,
-    entryUseTimeNSec :: Word64
+    entryUseTimeNSec :: Word64,
+    entryId :: UUID
   }
 
-entryIsAlive :: Word64 -> Word64 -> Word64 -> Entry -> Bool
-entryIsAlive maxLifetime maxIdletime now Entry {..} =
-  now
-    <= entryCreationTimeNSec
-    + maxLifetime
-    && now
-    <= entryUseTimeNSec
-    + maxIdletime
+entryIsAged :: Word64 -> Word64 -> Entry -> Bool
+entryIsAged maxLifetime now Entry {..} =
+  now > entryCreationTimeNSec + maxLifetime
+
+entryIsIdle :: Word64 -> Word64 -> Entry -> Bool
+entryIsIdle maxIdletime now Entry {..} =
+  now > entryUseTimeNSec + maxIdletime
 
 -- | Pool of connections to DB.
 data Pool = Pool
@@ -54,7 +60,9 @@ data Pool = Pool
     -- | Whether to return a connection to the pool.
     poolReuseVar :: TVar (TVar Bool),
     -- | To stop the manager thread via garbage collection.
-    poolReaperRef :: IORef ()
+    poolReaperRef :: IORef (),
+    -- | Action for reporting the observations.
+    poolObserver :: Observation -> IO ()
   }
 
 -- | Create a connection-pool, with default settings.
@@ -72,9 +80,16 @@ acquire ::
   DiffTime ->
   -- | Connection settings.
   Connection.Settings ->
+  -- | Observation handler.
+  --
+  -- Typically it's used for monitoring the state of the pool via metrics and logging.
+  --
+  -- If the action is not lightweight, it's recommended to use intermediate bufferring via channels like TBQueue.
+  -- E.g., if the action is @'atomically' . 'writeTBQueue' yourQueue@, then reading from it and processing can be done on a separate thread.
+  (Observation -> IO ()) ->
   IO Pool
-acquire poolSize acqTimeout maxLifetime maxIdletime connectionSettings =
-  acquireDynamically poolSize acqTimeout maxLifetime maxIdletime (pure connectionSettings)
+acquire poolSize acqTimeout maxLifetime maxIdletime connectionSettings observer =
+  acquireDynamically poolSize acqTimeout maxLifetime maxIdletime (pure connectionSettings) observer
 
 -- | Create a connection-pool.
 --
@@ -94,8 +109,15 @@ acquireDynamically ::
   DiffTime ->
   -- | Action fetching connection settings.
   IO Connection.Settings ->
+  -- | Observation handler.
+  --
+  -- Use it for monitoring the state of the pool via metrics and logging.
+  --
+  -- If the action is not lightweight, it's recommended to use intermediate bufferring via channels like TBQueue.
+  -- E.g., if the action is @'atomically' . 'writeTBQueue' yourQueue@, then reading from it and processing can be done on a separate thread.
+  (Observation -> IO ()) ->
   IO Pool
-acquireDynamically poolSize acqTimeout maxLifetime maxIdletime fetchConnectionSettings = do
+acquireDynamically poolSize acqTimeout maxLifetime maxIdletime fetchConnectionSettings observer = do
   connectionQueue <- newTQueueIO
   capVar <- newTVarIO poolSize
   reuseVar <- newTVarIO =<< newTVarIO True
@@ -106,17 +128,24 @@ acquireDynamically poolSize acqTimeout maxLifetime maxIdletime fetchConnectionSe
     now <- getMonotonicTimeNSec
     join . atomically $ do
       entries <- flushTQueue connectionQueue
-      let (keep, close) = partition (entryIsAlive maxLifetimeNanos maxIdletimeNanos now) entries
-      traverse_ (writeTQueue connectionQueue) keep
-      return $ forM_ close $ \entry -> do
-        Connection.release (entryConnection entry)
-        atomically $ modifyTVar' capVar succ
+      let (agedEntries, unagedEntries) = partition (entryIsAged maxLifetimeNanos now) entries
+          (idleEntries, liveEntries) = partition (entryIsIdle maxLifetimeNanos now) unagedEntries
+      traverse_ (writeTQueue connectionQueue) liveEntries
+      return $ do
+        forM_ agedEntries $ \entry -> do
+          Connection.release (entryConnection entry)
+          atomically $ modifyTVar' capVar succ
+          observer (ConnectionReleasedObservation (entryId entry) AgingReleaseReason)
+        forM_ idleEntries $ \entry -> do
+          Connection.release (entryConnection entry)
+          atomically $ modifyTVar' capVar succ
+          observer (ConnectionReleasedObservation (entryId entry) IdlenessReleaseReason)
 
   void . mkWeakIORef reaperRef $ do
     -- When the pool goes out of scope, stop the manager.
     killThread managerTid
 
-  return $ Pool poolSize fetchConnectionSettings acqTimeoutMicros maxLifetimeNanos maxIdletimeNanos connectionQueue capVar reuseVar reaperRef
+  return $ Pool poolSize fetchConnectionSettings acqTimeoutMicros maxLifetimeNanos maxIdletimeNanos connectionQueue capVar reuseVar reaperRef observer
   where
     acqTimeoutMicros =
       div (fromIntegral (diffTimeToPicoseconds acqTimeout)) 1_000_000
@@ -143,6 +172,7 @@ release Pool {..} =
     return $ forM_ entries $ \entry -> do
       Connection.release (entryConnection entry)
       atomically $ modifyTVar' poolCapacity succ
+      poolObserver (ConnectionReleasedObservation (entryId entry) ReleaseActionCallReleaseReason)
 
 -- | Use a connection from the pool to run a session and return the connection
 -- to the pool, when finished.
@@ -152,8 +182,7 @@ release Pool {..} =
 -- and a slot gets freed up for a new connection to be established the next
 -- time one is needed. The error still gets returned from this function.
 --
--- __Warning:__ Due to the mechanism mentioned above you should avoid consuming
--- errors within sessions.
+-- __Warning:__ Due to the mechanism mentioned above you should avoid intercepting this error type from within sessions.
 use :: Pool -> Session.Session a -> IO (Either UsageError a)
 use Pool {..} sess = do
   timeout <- do
@@ -180,20 +209,33 @@ use Pool {..} sess = do
     onNewConn reuseVar = do
       settings <- poolFetchConnectionSettings
       now <- getMonotonicTimeNSec
+      id <- Uuid.nextRandom
+      poolObserver (AttemptingToConnectObservation id)
       connRes <- Connection.acquire settings
       case connRes of
         Left connErr -> do
+          poolObserver (FailedToConnectObservation id connErr)
           atomically $ modifyTVar' poolCapacity succ
           return $ Left $ ConnectionUsageError connErr
-        Right entry -> onLiveConn reuseVar (Entry entry now now)
+        Right entry -> do
+          poolObserver (ConnectionEstablishedObservation id)
+          onLiveConn reuseVar (Entry entry now now id)
 
     onConn reuseVar entry = do
       now <- getMonotonicTimeNSec
-      if entryIsAlive poolMaxLifetime poolMaxIdletime now entry
-        then onLiveConn reuseVar entry {entryUseTimeNSec = now}
-        else do
+      if entryIsAged poolMaxLifetime now entry
+        then do
           Connection.release (entryConnection entry)
+          poolObserver (ConnectionReleasedObservation (entryId entry) AgingReleaseReason)
           onNewConn reuseVar
+        else
+          if entryIsIdle poolMaxIdletime now entry
+            then do
+              Connection.release (entryConnection entry)
+              poolObserver (ConnectionReleasedObservation (entryId entry) IdlenessReleaseReason)
+              onNewConn reuseVar
+            else do
+              onLiveConn reuseVar entry {entryUseTimeNSec = now}
 
     onLiveConn reuseVar entry = do
       sessRes <- try @SomeException (Session.run sess (entryConnection entry))
@@ -203,8 +245,10 @@ use Pool {..} sess = do
           returnConn
           throwIO exc
         Right (Left err) -> case err of
-          Session.QueryError _ _ (Session.ClientError _) -> do
+          Session.QueryError _ _ (Session.ClientError details) -> do
+            Connection.release (entryConnection entry)
             atomically $ modifyTVar' poolCapacity succ
+            poolObserver (ConnectionReleasedObservation (entryId entry) (TransportErrorReleaseReason details))
             return $ Left $ SessionUsageError err
           _ -> do
             returnConn
@@ -221,6 +265,7 @@ use Pool {..} sess = do
               else return $ do
                 Connection.release (entryConnection entry)
                 atomically $ modifyTVar' poolCapacity succ
+                poolObserver (ConnectionReleasedObservation (entryId entry) ReleaseActionCallReleaseReason)
 
 -- | Union over all errors that 'use' can result in.
 data UsageError

@@ -18,7 +18,7 @@ main :: IO ()
 main = do
   connectionSettings <- getConnectionSettings
   let withPool poolSize acqTimeout maxLifetime maxIdletime connectionSettings =
-        bracket (acquire poolSize acqTimeout maxLifetime maxIdletime connectionSettings) release
+        bracket (acquire poolSize acqTimeout maxLifetime maxIdletime connectionSettings (const (pure ()))) release
       withDefaultPool =
         withPool 3 10 1_800 1_800 connectionSettings
 
