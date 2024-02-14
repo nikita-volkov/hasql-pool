@@ -196,21 +196,20 @@ use Pool {..} sess = do
           onNewConn reuseVar
 
     onLiveConn reuseVar entry = do
-      sessRes <-
-        catch (Session.run sess (entryConnection entry)) $ \(err :: SomeException) -> do
-          Connection.release (entryConnection entry)
-          atomically $ modifyTVar' poolCapacity succ
-          throw err
+      sessRes <- try @SomeException (Session.run sess (entryConnection entry))
 
       case sessRes of
-        Left err -> case err of
+        Left exc -> do
+          returnConn
+          throwIO exc
+        Right (Left err) -> case err of
           Session.QueryError _ _ (Session.ClientError _) -> do
             atomically $ modifyTVar' poolCapacity succ
             return $ Left $ SessionUsageError err
           _ -> do
             returnConn
             return $ Left $ SessionUsageError err
-        Right res -> do
+        Right (Right res) -> do
           returnConn
           return $ Right res
       where
