@@ -105,11 +105,11 @@ acquireDynamically poolSize acqTimeout maxLifetime maxIdletime fetchConnectionSe
     threadDelay 1000000
     now <- getMonotonicTimeNSec
     join . atomically $ do
-      conns <- flushTQueue connectionQueue
-      let (keep, close) = partition (entryIsAlive maxLifetimeNanos maxIdletimeNanos now) conns
+      entries <- flushTQueue connectionQueue
+      let (keep, close) = partition (entryIsAlive maxLifetimeNanos maxIdletimeNanos now) entries
       traverse_ (writeTQueue connectionQueue) keep
-      return $ forM_ close $ \conn -> do
-        Connection.release (entryConnection conn)
+      return $ forM_ close $ \entry -> do
+        Connection.release (entryConnection entry)
         atomically $ modifyTVar' capVar succ
 
   void . mkWeakIORef reaperRef $ do
@@ -139,9 +139,9 @@ release Pool {..} =
     writeTVar prevReuse False
     newReuse <- newTVar True
     writeTVar poolReuseVar newReuse
-    conns <- flushTQueue poolConnectionQueue
-    return $ forM_ conns $ \conn -> do
-      Connection.release (entryConnection conn)
+    entries <- flushTQueue poolConnectionQueue
+    return $ forM_ entries $ \entry -> do
+      Connection.release (entryConnection entry)
       atomically $ modifyTVar' poolCapacity succ
 
 -- | Use a connection from the pool to run a session and return the connection
@@ -185,20 +185,20 @@ use Pool {..} sess = do
         Left connErr -> do
           atomically $ modifyTVar' poolCapacity succ
           return $ Left $ ConnectionUsageError connErr
-        Right conn -> onLiveConn reuseVar (Entry conn now now)
+        Right entry -> onLiveConn reuseVar (Entry entry now now)
 
-    onConn reuseVar conn = do
+    onConn reuseVar entry = do
       now <- getMonotonicTimeNSec
-      if entryIsAlive poolMaxLifetime poolMaxIdletime now conn
-        then onLiveConn reuseVar conn {entryUseTimeNSec = now}
+      if entryIsAlive poolMaxLifetime poolMaxIdletime now entry
+        then onLiveConn reuseVar entry {entryUseTimeNSec = now}
         else do
-          Connection.release (entryConnection conn)
+          Connection.release (entryConnection entry)
           onNewConn reuseVar
 
-    onLiveConn reuseVar conn = do
+    onLiveConn reuseVar entry = do
       sessRes <-
-        catch (Session.run sess (entryConnection conn)) $ \(err :: SomeException) -> do
-          Connection.release (entryConnection conn)
+        catch (Session.run sess (entryConnection entry)) $ \(err :: SomeException) -> do
+          Connection.release (entryConnection entry)
           atomically $ modifyTVar' poolCapacity succ
           throw err
 
@@ -218,9 +218,9 @@ use Pool {..} sess = do
           join . atomically $ do
             reuse <- readTVar reuseVar
             if reuse
-              then writeTQueue poolConnectionQueue conn $> return ()
+              then writeTQueue poolConnectionQueue entry $> return ()
               else return $ do
-                Connection.release (entryConnection conn)
+                Connection.release (entryConnection entry)
                 atomically $ modifyTVar' poolCapacity succ
 
 -- | Union over all errors that 'use' can result in.
