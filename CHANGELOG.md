@@ -1,3 +1,7 @@
+# 0.10.1
+
+- Avoid releasing connections on exceptions thrown in session
+
 # 0.9
 
 - Maximal lifetime added for connections. Allows to refresh the connections in time cleaning up the resources.
