@@ -10,8 +10,7 @@ module Hasql.Pool
     UsageError (..),
 
     -- * Observations
-    Observation (..),
-    ConnectionTerminationReason (..),
+    module Hasql.Pool.Observation,
   )
 where
 
