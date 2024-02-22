@@ -11,10 +11,12 @@ module Hasql.Pool
 
     -- * Observations
     Observation (..),
-    ReleaseReason (..),
+    ConnectionTerminationReason (..),
   )
 where
 
+import qualified Data.Text.Encoding as Text
+import qualified Data.Text.Encoding.Error as Text
 import qualified Data.UUID.V4 as Uuid
 import Hasql.Connection (Connection)
 import qualified Hasql.Connection as Connection
@@ -135,11 +137,11 @@ acquireDynamically poolSize acqTimeout maxLifetime maxIdletime fetchConnectionSe
         forM_ agedEntries $ \entry -> do
           Connection.release (entryConnection entry)
           atomically $ modifyTVar' capVar succ
-          observer (ConnectionReleasedObservation (entryId entry) AgingReleaseReason)
+          observer (ConnectionObservation (entryId entry) (TerminatedConnectionStatus AgingConnectionTerminationReason))
         forM_ idleEntries $ \entry -> do
           Connection.release (entryConnection entry)
           atomically $ modifyTVar' capVar succ
-          observer (ConnectionReleasedObservation (entryId entry) IdlenessReleaseReason)
+          observer (ConnectionObservation (entryId entry) (TerminatedConnectionStatus IdlenessConnectionTerminationReason))
 
   void . mkWeakIORef reaperRef $ do
     -- When the pool goes out of scope, stop the manager.
@@ -172,7 +174,7 @@ release Pool {..} =
     return $ forM_ entries $ \entry -> do
       Connection.release (entryConnection entry)
       atomically $ modifyTVar' poolCapacity succ
-      poolObserver (ConnectionReleasedObservation (entryId entry) ReleaseActionCallReleaseReason)
+      poolObserver (ConnectionObservation (entryId entry) (TerminatedConnectionStatus ReleaseConnectionTerminationReason))
 
 -- | Use a connection from the pool to run a session and return the connection
 -- to the pool, when finished.
@@ -210,15 +212,15 @@ use Pool {..} sess = do
       settings <- poolFetchConnectionSettings
       now <- getMonotonicTimeNSec
       id <- Uuid.nextRandom
-      poolObserver (AttemptingToConnectObservation id)
+      poolObserver (ConnectionObservation id ConnectingConnectionStatus)
       connRes <- Connection.acquire settings
       case connRes of
         Left connErr -> do
-          poolObserver (FailedToConnectObservation id connErr)
+          poolObserver (ConnectionObservation id (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (fmap (Text.decodeUtf8With Text.lenientDecode) connErr))))
           atomically $ modifyTVar' poolCapacity succ
           return $ Left $ ConnectionUsageError connErr
         Right entry -> do
-          poolObserver (ConnectionEstablishedObservation id)
+          poolObserver (ConnectionObservation id ReadyForUseConnectionStatus)
           onLiveConn reuseVar (Entry entry now now id)
 
     onConn reuseVar entry = do
@@ -226,18 +228,19 @@ use Pool {..} sess = do
       if entryIsAged poolMaxLifetime now entry
         then do
           Connection.release (entryConnection entry)
-          poolObserver (ConnectionReleasedObservation (entryId entry) AgingReleaseReason)
+          poolObserver (ConnectionObservation (entryId entry) (TerminatedConnectionStatus AgingConnectionTerminationReason))
           onNewConn reuseVar
         else
           if entryIsIdle poolMaxIdletime now entry
             then do
               Connection.release (entryConnection entry)
-              poolObserver (ConnectionReleasedObservation (entryId entry) IdlenessReleaseReason)
+              poolObserver (ConnectionObservation (entryId entry) (TerminatedConnectionStatus IdlenessConnectionTerminationReason))
               onNewConn reuseVar
             else do
               onLiveConn reuseVar entry {entryUseTimeNSec = now}
 
     onLiveConn reuseVar entry = do
+      poolObserver (ConnectionObservation (entryId entry) InUseConnectionStatus)
       sessRes <- try @SomeException (Session.run sess (entryConnection entry))
 
       case sessRes of
@@ -248,13 +251,15 @@ use Pool {..} sess = do
           Session.QueryError _ _ (Session.ClientError details) -> do
             Connection.release (entryConnection entry)
             atomically $ modifyTVar' poolCapacity succ
-            poolObserver (ConnectionReleasedObservation (entryId entry) (TransportErrorReleaseReason details))
+            poolObserver (ConnectionObservation (entryId entry) (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (fmap (Text.decodeUtf8With Text.lenientDecode) details))))
             return $ Left $ SessionUsageError err
           _ -> do
             returnConn
+            poolObserver (ConnectionObservation (entryId entry) ReadyForUseConnectionStatus)
             return $ Left $ SessionUsageError err
         Right (Right res) -> do
           returnConn
+          poolObserver (ConnectionObservation (entryId entry) ReadyForUseConnectionStatus)
           return $ Right res
       where
         returnConn =
@@ -265,7 +270,7 @@ use Pool {..} sess = do
               else return $ do
                 Connection.release (entryConnection entry)
                 atomically $ modifyTVar' poolCapacity succ
-                poolObserver (ConnectionReleasedObservation (entryId entry) ReleaseActionCallReleaseReason)
+                poolObserver (ConnectionObservation (entryId entry) (TerminatedConnectionStatus ReleaseConnectionTerminationReason))
 
 -- | Union over all errors that 'use' can result in.
 data UsageError
