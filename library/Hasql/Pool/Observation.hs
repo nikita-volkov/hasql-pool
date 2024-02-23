@@ -18,7 +18,7 @@ data ConnectionStatus
     ReadyForUseConnectionStatus
   | -- | Is being used by some session.
     --
-    -- After it's done the status will transition to 'ReadyForUseConnectionStatus' or 'ReleasedConnectionStatus'.
+    -- After it's done the status will transition to 'ReadyForUseConnectionStatus' or 'TerminatedConnectionStatus'.
     InUseConnectionStatus
   | -- | Connection terminated.
     TerminatedConnectionStatus ConnectionTerminationReason
