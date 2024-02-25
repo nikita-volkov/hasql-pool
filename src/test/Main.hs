@@ -21,7 +21,7 @@ main = do
   let withPool poolSize acqTimeout maxLifetime maxIdletime connectionSettings =
         bracket
           ( acquire
-              ( Config.compile
+              ( Config.settings
                   [ Config.size poolSize,
                     Config.acquisitionTimeout acqTimeout,
                     Config.agingTimeout maxLifetime,

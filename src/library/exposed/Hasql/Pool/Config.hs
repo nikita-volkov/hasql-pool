@@ -1,7 +1,7 @@
 -- | DSL for construction of configs.
 module Hasql.Pool.Config
   ( Config.Config,
-    compile,
+    settings,
     Setting.Setting,
     Setting.size,
     Setting.acquisitionTimeout,
@@ -19,6 +19,6 @@ import Hasql.Pool.Prelude
 
 -- | Compile config from a list of settings.
 -- Latter settings override the preceding in cases of conflicts.
-compile :: [Setting.Setting] -> Config.Config
-compile =
+settings :: [Setting.Setting] -> Config.Config
+settings =
   foldr ($) Config.defaults . fmap Setting.apply
