@@ -1,6 +1,6 @@
 # 0.11
 
-- Optional observability event stream, which can be interpreted into log records and metrics.
+- Optional observability event stream added. Provides a flexible mechanism for monitoring the healthiness of the pool via logs and metrics.
 
 # 0.10.1
 
