@@ -1,3 +1,7 @@
+# 0.11
+
+- Optional observability event stream, which can be interpreted into log records and metrics.
+
 # 0.10.1
 
 - Avoid releasing connections on exceptions thrown in session

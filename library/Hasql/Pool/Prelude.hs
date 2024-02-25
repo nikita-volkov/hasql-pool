@@ -17,6 +17,7 @@ import Control.Monad.ST as Exports
 import Data.Bifunctor as Exports
 import Data.Bits as Exports
 import Data.Bool as Exports
+import Data.ByteString as Exports (ByteString)
 import Data.Char as Exports
 import Data.Coerce as Exports
 import Data.Complex as Exports
@@ -40,9 +41,11 @@ import Data.Proxy as Exports
 import Data.Ratio as Exports
 import Data.STRef as Exports
 import Data.String as Exports
+import Data.Text as Exports (Text)
 import Data.Time as Exports
 import Data.Traversable as Exports
 import Data.Tuple as Exports
+import Data.UUID as Exports (UUID)
 import Data.Unique as Exports
 import Data.Version as Exports
 import Data.Void as Exports
