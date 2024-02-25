@@ -14,8 +14,8 @@ data Config = Config
   }
 
 -- | Reasonable defaults, which can be built upon.
-standard :: Config
-standard =
+defaults :: Config
+defaults =
   Config
     { size = 3,
       acquisitionTimeout = 10,

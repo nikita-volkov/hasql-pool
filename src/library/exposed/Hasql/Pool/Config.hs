@@ -21,4 +21,4 @@ import Hasql.Pool.Prelude
 -- Latter settings override the preceding in cases of conflicts.
 compile :: [Setting.Setting] -> Config.Config
 compile =
-  foldr ($) Config.standard . fmap Setting.apply
+  foldr ($) Config.defaults . fmap Setting.apply
