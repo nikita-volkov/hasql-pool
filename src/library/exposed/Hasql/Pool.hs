@@ -8,9 +8,6 @@ module Hasql.Pool
 
     -- * Errors
     UsageError (..),
-
-    -- * Observations
-    module Hasql.Pool.Observation,
   )
 where
 
