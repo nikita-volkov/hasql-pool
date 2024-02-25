@@ -1,6 +1,6 @@
 # 1
 
-- Optional observability event stream, which can be interpreted into log records and metrics.
+- Optional observability event stream added. Provides a flexible mechanism for monitoring the healthiness of the pool via logs and metrics.
 - Configuration got isolated into a DSL, which will allow to provide new configurations without breaking backward compatibility.
 
 # 0.10.1
