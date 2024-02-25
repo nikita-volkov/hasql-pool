@@ -1,6 +1,7 @@
-# 0.11
+# 1
 
 - Optional observability event stream, which can be interpreted into log records and metrics.
+- Configuration got isolated into a DSL, which will allow to provide new configurations without breaking backward compatibility.
 
 # 0.10.1
 
