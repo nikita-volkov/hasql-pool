@@ -1,5 +1,6 @@
 module Hasql.Pool.Config.Config where
 
+import qualified Hasql.Connection as Connection
 import Hasql.Pool.Observation (Observation)
 import Hasql.Pool.Prelude
 
@@ -9,7 +10,7 @@ data Config = Config
     acquisitionTimeout :: DiffTime,
     agingTimeout :: DiffTime,
     idlenessTimeout :: DiffTime,
-    connectionStringProvider :: IO ByteString,
+    connectionSettingsProvider :: IO Connection.Settings,
     observationHandler :: Observation -> IO ()
   }
 
@@ -21,6 +22,6 @@ defaults =
       acquisitionTimeout = 10,
       agingTimeout = 60 * 60 * 24,
       idlenessTimeout = 60 * 10,
-      connectionStringProvider = pure "postgresql://postgres:postgres@localhost:5432/postgres",
+      connectionSettingsProvider = pure "postgresql://postgres:postgres@localhost:5432/postgres",
       observationHandler = const (pure ())
     }

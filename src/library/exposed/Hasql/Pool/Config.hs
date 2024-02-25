@@ -7,8 +7,8 @@ module Hasql.Pool.Config
     Setting.acquisitionTimeout,
     Setting.agingTimeout,
     Setting.idlenessTimeout,
-    Setting.staticConnectionString,
-    Setting.dynamicConnectionString,
+    Setting.staticConnectionSettings,
+    Setting.dynamicConnectionSettings,
     Setting.observationHandler,
   )
 where

@@ -26,7 +26,7 @@ main = do
                     Config.acquisitionTimeout acqTimeout,
                     Config.agingTimeout maxLifetime,
                     Config.idlenessTimeout maxIdletime,
-                    Config.staticConnectionString connectionSettings
+                    Config.staticConnectionSettings connectionSettings
                   ]
               )
           )
