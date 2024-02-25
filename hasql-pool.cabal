@@ -71,10 +71,15 @@ library
   -- cabal-gild: discover src/library/exposed
   exposed-modules:
     Hasql.Pool
+    Hasql.Pool.Config
     Hasql.Pool.Observation
 
   -- cabal-gild: discover src/library/other
-  other-modules: Hasql.Pool.Prelude
+  other-modules:
+    Hasql.Pool.Config.Config
+    Hasql.Pool.Config.Setting
+    Hasql.Pool.Prelude
+
   build-depends:
     base >=4.11 && <5,
     bytestring >=0.10 && <0.14,

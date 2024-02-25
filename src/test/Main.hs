@@ -7,6 +7,7 @@ import qualified Hasql.Connection as Connection
 import qualified Hasql.Decoders as Decoders
 import qualified Hasql.Encoders as Encoders
 import Hasql.Pool
+import qualified Hasql.Pool.Config as Config
 import qualified Hasql.Session as Session
 import qualified Hasql.Statement as Statement
 import qualified System.Environment
@@ -18,7 +19,18 @@ main :: IO ()
 main = do
   connectionSettings <- getConnectionSettings
   let withPool poolSize acqTimeout maxLifetime maxIdletime connectionSettings =
-        bracket (acquire poolSize acqTimeout maxLifetime maxIdletime connectionSettings (const (pure ()))) release
+        bracket
+          ( acquire
+              ( Config.compile
+                  [ Config.size poolSize,
+                    Config.acquisitionTimeout acqTimeout,
+                    Config.agingTimeout maxLifetime,
+                    Config.idlenessTimeout maxIdletime,
+                    Config.staticConnectionString connectionSettings
+                  ]
+              )
+          )
+          release
       withDefaultPool =
         withPool 3 10 1_800 1_800 connectionSettings
 

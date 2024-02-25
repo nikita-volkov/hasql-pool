@@ -2,7 +2,6 @@ module Hasql.Pool
   ( -- * Pool
     Pool,
     acquire,
-    acquireDynamically,
     use,
     release,
 
@@ -16,6 +15,7 @@ import qualified Data.Text.Encoding.Error as Text
 import qualified Data.UUID.V4 as Uuid
 import Hasql.Connection (Connection)
 import qualified Hasql.Connection as Connection
+import qualified Hasql.Pool.Config.Config as Config
 import Hasql.Pool.Observation
 import Hasql.Pool.Prelude
 import qualified Hasql.Session as Session
@@ -63,61 +63,14 @@ data Pool = Pool
     poolObserver :: Observation -> IO ()
   }
 
--- | Create a connection-pool, with default settings.
---
--- No connections actually get established by this function. It is delegated
--- to 'use'.
-acquire ::
-  -- | Pool size.
-  Int ->
-  -- | Connection acquisition timeout.
-  DiffTime ->
-  -- | Maximal connection lifetime.
-  DiffTime ->
-  -- | Maximal connection idle time.
-  DiffTime ->
-  -- | Connection settings.
-  Connection.Settings ->
-  -- | Observation handler.
-  --
-  -- Typically it's used for monitoring the state of the pool via metrics and logging.
-  --
-  -- If the action is not lightweight, it's recommended to use intermediate bufferring via channels like TBQueue.
-  -- E.g., if the action is @'atomically' . 'writeTBQueue' yourQueue@, then reading from it and processing can be done on a separate thread.
-  (Observation -> IO ()) ->
-  IO Pool
-acquire poolSize acqTimeout maxLifetime maxIdletime connectionSettings observer =
-  acquireDynamically poolSize acqTimeout maxLifetime maxIdletime (pure connectionSettings) observer
-
 -- | Create a connection-pool.
 --
--- In difference to 'acquire' new connection settings get fetched each
--- time a connection is created. This may be useful for some security models.
---
 -- No connections actually get established by this function. It is delegated
 -- to 'use'.
-acquireDynamically ::
-  -- | Pool size.
-  Int ->
-  -- | Connection acquisition timeout.
-  DiffTime ->
-  -- | Maximal connection lifetime.
-  DiffTime ->
-  -- | Maximal connection idle time.
-  DiffTime ->
-  -- | Action fetching connection settings.
-  IO Connection.Settings ->
-  -- | Observation handler.
-  --
-  -- Use it for monitoring the state of the pool via metrics and logging.
-  --
-  -- If the action is not lightweight, it's recommended to use intermediate bufferring via channels like TBQueue.
-  -- E.g., if the action is @'atomically' . 'writeTBQueue' yourQueue@, then reading from it and processing can be done on a separate thread.
-  (Observation -> IO ()) ->
-  IO Pool
-acquireDynamically poolSize acqTimeout maxLifetime maxIdletime fetchConnectionSettings observer = do
+acquire :: Config.Config -> IO Pool
+acquire config = do
   connectionQueue <- newTQueueIO
-  capVar <- newTVarIO poolSize
+  capVar <- newTVarIO (Config.size config)
   reuseVar <- newTVarIO =<< newTVarIO True
   reaperRef <- newIORef ()
 
@@ -126,31 +79,31 @@ acquireDynamically poolSize acqTimeout maxLifetime maxIdletime fetchConnectionSe
     now <- getMonotonicTimeNSec
     join . atomically $ do
       entries <- flushTQueue connectionQueue
-      let (agedEntries, unagedEntries) = partition (entryIsAged maxLifetimeNanos now) entries
-          (idleEntries, liveEntries) = partition (entryIsIdle maxLifetimeNanos now) unagedEntries
+      let (agedEntries, unagedEntries) = partition (entryIsAged agingTimeoutNanos now) entries
+          (idleEntries, liveEntries) = partition (entryIsIdle agingTimeoutNanos now) unagedEntries
       traverse_ (writeTQueue connectionQueue) liveEntries
       return $ do
         forM_ agedEntries $ \entry -> do
           Connection.release (entryConnection entry)
           atomically $ modifyTVar' capVar succ
-          observer (ConnectionObservation (entryId entry) (TerminatedConnectionStatus AgingConnectionTerminationReason))
+          (Config.observationHandler config) (ConnectionObservation (entryId entry) (TerminatedConnectionStatus AgingConnectionTerminationReason))
         forM_ idleEntries $ \entry -> do
           Connection.release (entryConnection entry)
           atomically $ modifyTVar' capVar succ
-          observer (ConnectionObservation (entryId entry) (TerminatedConnectionStatus IdlenessConnectionTerminationReason))
+          (Config.observationHandler config) (ConnectionObservation (entryId entry) (TerminatedConnectionStatus IdlenessConnectionTerminationReason))
 
   void . mkWeakIORef reaperRef $ do
     -- When the pool goes out of scope, stop the manager.
     killThread managerTid
 
-  return $ Pool poolSize fetchConnectionSettings acqTimeoutMicros maxLifetimeNanos maxIdletimeNanos connectionQueue capVar reuseVar reaperRef observer
+  return $ Pool (Config.size config) (Config.connectionStringProvider config) acqTimeoutMicros agingTimeoutNanos maxIdletimeNanos connectionQueue capVar reuseVar reaperRef (Config.observationHandler config)
   where
     acqTimeoutMicros =
-      div (fromIntegral (diffTimeToPicoseconds acqTimeout)) 1_000_000
-    maxLifetimeNanos =
-      div (fromIntegral (diffTimeToPicoseconds maxLifetime)) 1_000
+      div (fromIntegral (diffTimeToPicoseconds (Config.acquisitionTimeout config))) 1_000_000
+    agingTimeoutNanos =
+      div (fromIntegral (diffTimeToPicoseconds (Config.agingTimeout config))) 1_000
     maxIdletimeNanos =
-      div (fromIntegral (diffTimeToPicoseconds maxIdletime)) 1_000
+      div (fromIntegral (diffTimeToPicoseconds (Config.idlenessTimeout config))) 1_000
 
 -- | Release all the idle connections in the pool, and mark the in-use connections
 -- to be released after use. Any connections acquired after the call will be
