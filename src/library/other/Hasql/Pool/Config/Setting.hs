@@ -52,7 +52,9 @@ idlenessTimeout x =
 --
 -- You can use 'Hasql.Connection.settings' to construct it.
 --
--- @\"postgresql://postgres:postgres@localhost:5432/postgres\"@ by default.
+-- By default it is:
+--
+-- > "postgresql://postgres:postgres@localhost:5432/postgres"
 staticConnectionSettings :: Connection.Settings -> Setting
 staticConnectionSettings x =
   Setting (\config -> config {Config.connectionSettingsProvider = pure x})
@@ -64,7 +66,9 @@ staticConnectionSettings x =
 --
 -- You can use 'Hasql.Connection.settings' to construct it.
 --
--- @pure \"postgresql://postgres:postgres@localhost:5432/postgres\"@ by default.
+-- By default it is:
+--
+-- > pure "postgresql://postgres:postgres@localhost:5432/postgres"
 dynamicConnectionSettings :: IO Connection.Settings -> Setting
 dynamicConnectionSettings x =
   Setting (\config -> config {Config.connectionSettingsProvider = x})
@@ -76,7 +80,9 @@ dynamicConnectionSettings x =
 -- If the provided action is not lightweight, it's recommended to use intermediate bufferring via channels like TBQueue to avoid occupying the pool management thread for too long.
 -- E.g., if the action is @'atomically' . 'writeTBQueue' yourQueue@, then reading from it and processing can be done on a separate thread.
 --
--- @const (pure ())@ by default.
+-- By default it is:
+--
+-- > const (pure ())
 observationHandler :: (Observation -> IO ()) -> Setting
 observationHandler x =
   Setting (\config -> config {Config.observationHandler = x})
