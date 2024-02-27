@@ -67,6 +67,8 @@ data Pool = Pool
 --
 -- No connections actually get established by this function. It is delegated
 -- to 'use'.
+-- 
+-- If you want to ensure that the pool connects fine at the initialization phase, just run 'use' with an empty session (@pure ()@) and check for errors.
 acquire :: Config.Config -> IO Pool
 acquire config = do
   connectionQueue <- newTQueueIO
