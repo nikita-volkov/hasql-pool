@@ -1,6 +1,7 @@
 module Hasql.Pool.Config.Config where
 
 import qualified Hasql.Connection as Connection
+import qualified Hasql.Pool.Config.Defaults as Defaults
 import Hasql.Pool.Observation (Observation)
 import Hasql.Pool.Prelude
 
@@ -18,10 +19,10 @@ data Config = Config
 defaults :: Config
 defaults =
   Config
-    { size = 3,
-      acquisitionTimeout = 10,
-      agingTimeout = 60 * 60 * 24,
-      idlenessTimeout = 60 * 10,
-      connectionSettingsProvider = pure "postgresql://postgres:postgres@localhost:5432/postgres",
-      observationHandler = const (pure ())
+    { size = Defaults.size,
+      acquisitionTimeout = Defaults.acquisitionTimeout,
+      agingTimeout = Defaults.agingTimeout,
+      idlenessTimeout = Defaults.idlenessTimeout,
+      connectionSettingsProvider = Defaults.dynamicConnectionSettings,
+      observationHandler = Defaults.observationHandler
     }
