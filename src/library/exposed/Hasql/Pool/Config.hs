@@ -10,6 +10,7 @@ module Hasql.Pool.Config
     Setting.staticConnectionSettings,
     Setting.dynamicConnectionSettings,
     Setting.observationHandler,
+    Setting.initSession,
   )
 where
 

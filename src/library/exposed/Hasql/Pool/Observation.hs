@@ -5,6 +5,7 @@
 module Hasql.Pool.Observation where
 
 import Hasql.Pool.Prelude
+import qualified Hasql.Session as Session
 
 -- | An observation of a change of the state of a pool.
 data Observation
@@ -43,4 +44,6 @@ data ConnectionTerminationReason
     NetworkErrorConnectionTerminationReason (Maybe Text)
   | -- | User has invoked the 'Hasql.Pool.release' procedure.
     ReleaseConnectionTerminationReason
+  | -- | Initialization session failure.
+    InitializationErrorTerminationReason Session.QueryError
   deriving (Show, Eq)
