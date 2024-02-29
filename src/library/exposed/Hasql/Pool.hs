@@ -164,15 +164,14 @@ use Pool {..} sess = do
       now <- getMonotonicTimeNSec
       id <- Uuid.nextRandom
       poolObserver (ConnectionObservation id ConnectingConnectionStatus)
-      connRes <- Connection.acquire settings
-      case connRes of
+      Connection.acquire settings >>= \case
         Left connErr -> do
           poolObserver (ConnectionObservation id (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (fmap (Text.decodeUtf8With Text.lenientDecode) connErr))))
           atomically $ modifyTVar' poolCapacity succ
           return $ Left $ ConnectionUsageError connErr
-        Right entry -> do
+        Right connection -> do
           poolObserver (ConnectionObservation id ReadyForUseConnectionStatus)
-          onLiveConn reuseVar (Entry entry now now id)
+          onLiveConn reuseVar (Entry connection now now id)
 
     onConn reuseVar entry = do
       now <- getMonotonicTimeNSec
