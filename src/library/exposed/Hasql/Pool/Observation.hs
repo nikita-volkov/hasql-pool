@@ -20,7 +20,7 @@ data Observation
 
 -- | Status of a connection.
 --
--- <<diagrams-output/observation-status-model.png>>
+-- <<diagrams-output/connection-status-model.png>>
 data ConnectionStatus
   = -- | Connection is being established.
     --
