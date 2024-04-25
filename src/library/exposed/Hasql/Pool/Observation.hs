@@ -18,15 +18,15 @@ data Observation
   deriving (Show, Eq)
 
 -- | Status of a connection.
+--
+-- <<diagrams-output/observation-status-model.png>>
 data ConnectionStatus
   = -- | Connection is being established.
     --
     -- This is the initial status of every connection.
     ConnectingConnectionStatus
   | -- | Connection is established and not occupied.
-    ReadyForUseConnectionStatus
-      -- | Whether the connection has just been established.
-      ConnectionReadyForUseReason
+    ReadyForUseConnectionStatus ConnectionReadyForUseReason
   | -- | Is being used by some session.
     --
     -- After it's done the status will transition to 'ReadyForUseConnectionStatus' or 'TerminatedConnectionStatus'.
