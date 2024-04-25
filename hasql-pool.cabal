@@ -13,11 +13,9 @@ license-file: LICENSE
 extra-source-files:
   CHANGELOG.md
   diagrams-output/*.png
-  diagrams-output/*.svg
 
 extra-doc-files:
   diagrams-output/*.png
-  diagrams-output/*.svg
 
 source-repository head
   type: git
