@@ -3,6 +3,7 @@ module Hasql.Pool.Config.Defaults where
 import qualified Hasql.Connection as Connection
 import Hasql.Pool.Observation (Observation)
 import Hasql.Pool.Prelude
+import qualified Hasql.Session as Session
 
 -- |
 -- 3 connections.
@@ -38,3 +39,8 @@ dynamicConnectionSettings = pure "postgresql://postgres:postgres@localhost:5432/
 -- > const (pure ())
 observationHandler :: Observation -> IO ()
 observationHandler = const (pure ())
+
+-- |
+-- > pure ()
+initSession :: Session.Session ()
+initSession = pure ()
