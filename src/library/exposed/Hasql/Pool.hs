@@ -205,7 +205,7 @@ use Pool {..} sess = do
             return $ Left $ SessionUsageError err
           _ -> do
             returnConn
-            poolObserver (ConnectionObservation (entryId entry) (ReadyForUseConnectionStatus SessionFailedConnectionReadyForUseReason))
+            poolObserver (ConnectionObservation (entryId entry) (ReadyForUseConnectionStatus (SessionFailedConnectionReadyForUseReason err)))
             return $ Left $ SessionUsageError err
         Right (Right res) -> do
           returnConn

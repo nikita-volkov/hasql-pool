@@ -5,6 +5,7 @@
 module Hasql.Pool.Observation where
 
 import Hasql.Pool.Prelude
+import qualified Hasql.Session as Hasql
 
 -- | An observation of a change of the state of a pool.
 data Observation
@@ -39,7 +40,7 @@ data ConnectionReadyForUseReason
   = -- | Connection just got established.
     EstablishedConnectionReadyForUseReason
   | -- | Session execution ended with a failure that does not require a connection reset.
-    SessionFailedConnectionReadyForUseReason
+    SessionFailedConnectionReadyForUseReason Hasql.QueryError
   | -- | Session execution ended with success.
     SessionSucceededConnectionReadyForUseReason
   deriving (Show, Eq)
