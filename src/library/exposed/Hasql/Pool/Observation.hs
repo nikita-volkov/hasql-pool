@@ -5,6 +5,7 @@
 module Hasql.Pool.Observation where
 
 import Hasql.Pool.Prelude
+import qualified Hasql.Session as Hasql
 
 -- | An observation of a change of the state of a pool.
 data Observation
@@ -18,19 +19,30 @@ data Observation
   deriving (Show, Eq)
 
 -- | Status of a connection.
+--
+-- <<diagrams-output/observation-status-model.png>>
 data ConnectionStatus
   = -- | Connection is being established.
     --
     -- This is the initial status of every connection.
     ConnectingConnectionStatus
   | -- | Connection is established and not occupied.
-    ReadyForUseConnectionStatus
+    ReadyForUseConnectionStatus ConnectionReadyForUseReason
   | -- | Is being used by some session.
     --
     -- After it's done the status will transition to 'ReadyForUseConnectionStatus' or 'TerminatedConnectionStatus'.
     InUseConnectionStatus
   | -- | Connection terminated.
     TerminatedConnectionStatus ConnectionTerminationReason
+  deriving (Show, Eq)
+
+data ConnectionReadyForUseReason
+  = -- | Connection just got established.
+    EstablishedConnectionReadyForUseReason
+  | -- | Session execution ended with a failure that does not require a connection reset.
+    SessionFailedConnectionReadyForUseReason Hasql.QueryError
+  | -- | Session execution ended with success.
+    SessionSucceededConnectionReadyForUseReason
   deriving (Show, Eq)
 
 -- | Explanation of why a connection was terminated.
