@@ -1,6 +1,7 @@
 # 1.1
 
-- `ReadyForUseConnectionStatus` got extended with the `ConnectionReadyForUseReason` details
+- `ReadyForUseConnectionStatus` got extended with the `ConnectionReadyForUseReason` details.
+- `initSession` setting added.
 
 # 1
 
