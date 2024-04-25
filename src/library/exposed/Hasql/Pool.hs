@@ -170,7 +170,7 @@ use Pool {..} sess = do
           atomically $ modifyTVar' poolCapacity succ
           return $ Left $ ConnectionUsageError connErr
         Right connection -> do
-          poolObserver (ConnectionObservation id ReadyForUseConnectionStatus)
+          poolObserver (ConnectionObservation id (ReadyForUseConnectionStatus EstablishedConnectionReadyForUseReason))
           onLiveConn reuseVar (Entry connection now now id)
 
     onConn reuseVar entry = do
@@ -205,11 +205,11 @@ use Pool {..} sess = do
             return $ Left $ SessionUsageError err
           _ -> do
             returnConn
-            poolObserver (ConnectionObservation (entryId entry) ReadyForUseConnectionStatus)
+            poolObserver (ConnectionObservation (entryId entry) (ReadyForUseConnectionStatus SessionFailedConnectionReadyForUseReason))
             return $ Left $ SessionUsageError err
         Right (Right res) -> do
           returnConn
-          poolObserver (ConnectionObservation (entryId entry) ReadyForUseConnectionStatus)
+          poolObserver (ConnectionObservation (entryId entry) (ReadyForUseConnectionStatus SessionSucceededConnectionReadyForUseReason))
           return $ Right res
       where
         returnConn =

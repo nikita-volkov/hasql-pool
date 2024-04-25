@@ -25,12 +25,23 @@ data ConnectionStatus
     ConnectingConnectionStatus
   | -- | Connection is established and not occupied.
     ReadyForUseConnectionStatus
+      -- | Whether the connection has just been established.
+      ConnectionReadyForUseReason
   | -- | Is being used by some session.
     --
     -- After it's done the status will transition to 'ReadyForUseConnectionStatus' or 'TerminatedConnectionStatus'.
     InUseConnectionStatus
   | -- | Connection terminated.
     TerminatedConnectionStatus ConnectionTerminationReason
+  deriving (Show, Eq)
+
+data ConnectionReadyForUseReason
+  = -- | Connection just got established.
+    EstablishedConnectionReadyForUseReason
+  | -- | Session execution ended with a failure that does not require a connection reset.
+    SessionFailedConnectionReadyForUseReason
+  | -- | Session execution ended with success.
+    SessionSucceededConnectionReadyForUseReason
   deriving (Show, Eq)
 
 -- | Explanation of why a connection was terminated.
