@@ -182,7 +182,7 @@ use Pool {..} sess = do
                   poolObserver (ConnectionObservation id (TerminatedConnectionStatus (InitializationErrorTerminationReason err)))
               return $ Left $ SessionUsageError err
             Right () -> do
-              poolObserver (ConnectionObservation id ReadyForUseConnectionStatus)
+              poolObserver (ConnectionObservation id (ReadyForUseConnectionStatus EstablishedConnectionReadyForUseReason))
               onLiveConn reuseVar (Entry connection now now id)
 
     onConn reuseVar entry = do
@@ -217,11 +217,11 @@ use Pool {..} sess = do
             return $ Left $ SessionUsageError err
           _ -> do
             returnConn
-            poolObserver (ConnectionObservation (entryId entry) ReadyForUseConnectionStatus)
+            poolObserver (ConnectionObservation (entryId entry) (ReadyForUseConnectionStatus (SessionFailedConnectionReadyForUseReason err)))
             return $ Left $ SessionUsageError err
         Right (Right res) -> do
           returnConn
-          poolObserver (ConnectionObservation (entryId entry) ReadyForUseConnectionStatus)
+          poolObserver (ConnectionObservation (entryId entry) (ReadyForUseConnectionStatus SessionSucceededConnectionReadyForUseReason))
           return $ Right res
       where
         returnConn =

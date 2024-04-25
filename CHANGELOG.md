@@ -1,3 +1,7 @@
+# 1.1
+
+- `ReadyForUseConnectionStatus` got extended with the `ConnectionReadyForUseReason` details
+
 # 1
 
 - Optional observability event stream added. Provides a flexible mechanism for monitoring the healthiness of the pool via logs and metrics.

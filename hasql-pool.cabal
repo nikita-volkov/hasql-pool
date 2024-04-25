@@ -10,7 +10,12 @@ maintainer: Nikita Volkov <nikita.y.volkov@mail.ru>
 copyright: (c) 2015, Nikita Volkov
 license: MIT
 license-file: LICENSE
-extra-source-files: CHANGELOG.md
+extra-source-files:
+  CHANGELOG.md
+  diagrams-output/*.png
+
+extra-doc-files:
+  diagrams-output/*.png
 
 source-repository head
   type: git
