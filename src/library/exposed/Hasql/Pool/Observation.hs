@@ -40,7 +40,7 @@ data ConnectionReadyForUseReason
   = -- | Connection just got established.
     EstablishedConnectionReadyForUseReason
   | -- | Session execution ended with a failure that does not require a connection reset.
-    SessionFailedConnectionReadyForUseReason Session.QueryError
+    SessionFailedConnectionReadyForUseReason Session.SessionError
   | -- | Session execution ended with success.
     SessionSucceededConnectionReadyForUseReason
   deriving (Show, Eq)
@@ -56,5 +56,5 @@ data ConnectionTerminationReason
   | -- | User has invoked the 'Hasql.Pool.release' procedure.
     ReleaseConnectionTerminationReason
   | -- | Initialization session failure.
-    InitializationErrorTerminationReason Session.QueryError
+    InitializationErrorTerminationReason Session.SessionError
   deriving (Show, Eq)

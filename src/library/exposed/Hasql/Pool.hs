@@ -18,6 +18,7 @@ import qualified Hasql.Connection as Connection
 import qualified Hasql.Pool.Config.Config as Config
 import Hasql.Pool.Observation
 import Hasql.Pool.Prelude
+import qualified Hasql.Pool.SessionErrorDestructors as ErrorsDestruction
 import qualified Hasql.Session as Session
 
 -- | A connection tagged with metadata.
@@ -175,11 +176,12 @@ use Pool {..} sess = do
           Session.run poolInitSession connection >>= \case
             Left err -> do
               Connection.release connection
-              case err of
-                Session.QueryError _ _ (Session.ClientError details) -> do
-                  poolObserver (ConnectionObservation id (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (fmap (Text.decodeUtf8With Text.lenientDecode) details))))
-                _ ->
-                  poolObserver (ConnectionObservation id (TerminatedConnectionStatus (InitializationErrorTerminationReason err)))
+              ErrorsDestruction.reset
+                ( \details -> do
+                    poolObserver (ConnectionObservation id (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (fmap (Text.decodeUtf8With Text.lenientDecode) details))))
+                )
+                (poolObserver (ConnectionObservation id (TerminatedConnectionStatus (InitializationErrorTerminationReason err))))
+                err
               return $ Left $ SessionUsageError err
             Right () -> do
               poolObserver (ConnectionObservation id (ReadyForUseConnectionStatus EstablishedConnectionReadyForUseReason))
@@ -209,16 +211,20 @@ use Pool {..} sess = do
         Left exc -> do
           returnConn
           throwIO exc
-        Right (Left err) -> case err of
-          Session.QueryError _ _ (Session.ClientError details) -> do
-            Connection.release (entryConnection entry)
-            atomically $ modifyTVar' poolCapacity succ
-            poolObserver (ConnectionObservation (entryId entry) (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (fmap (Text.decodeUtf8With Text.lenientDecode) details))))
-            return $ Left $ SessionUsageError err
-          _ -> do
-            returnConn
-            poolObserver (ConnectionObservation (entryId entry) (ReadyForUseConnectionStatus (SessionFailedConnectionReadyForUseReason err)))
-            return $ Left $ SessionUsageError err
+        Right (Left err) ->
+          ErrorsDestruction.reset
+            ( \details -> do
+                Connection.release (entryConnection entry)
+                atomically $ modifyTVar' poolCapacity succ
+                poolObserver (ConnectionObservation (entryId entry) (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (fmap (Text.decodeUtf8With Text.lenientDecode) details))))
+                return $ Left $ SessionUsageError err
+            )
+            ( do
+                returnConn
+                poolObserver (ConnectionObservation (entryId entry) (ReadyForUseConnectionStatus (SessionFailedConnectionReadyForUseReason err)))
+                return $ Left $ SessionUsageError err
+            )
+            err
         Right (Right res) -> do
           returnConn
           poolObserver (ConnectionObservation (entryId entry) (ReadyForUseConnectionStatus SessionSucceededConnectionReadyForUseReason))
@@ -239,7 +245,7 @@ data UsageError
   = -- | Attempt to establish a connection failed.
     ConnectionUsageError Connection.ConnectionError
   | -- | Session execution failed.
-    SessionUsageError Session.QueryError
+    SessionUsageError Session.SessionError
   | -- | Timeout acquiring a connection.
     AcquisitionTimeoutUsageError
   deriving (Show, Eq)

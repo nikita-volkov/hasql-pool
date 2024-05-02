@@ -1,3 +1,8 @@
+# 1.2
+
+- Migrated to `hasql-1.7`
+- Changed references to `QueryError` in observations to `SessionError`
+
 # 1.1
 
 - `ReadyForUseConnectionStatus` got extended with the `ConnectionReadyForUseReason` details.
