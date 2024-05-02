@@ -22,7 +22,10 @@ source-repository head
   location: git://github.com/nikita-volkov/hasql-pool.git
 
 common base-settings
+  default-language: Haskell2010
   default-extensions:
+    ApplicativeDo
+    Arrows
     BangPatterns
     BlockArguments
     ConstraintKinds
@@ -40,32 +43,27 @@ common base-settings
     FunctionalDependencies
     GADTs
     GeneralizedNewtypeDeriving
-    InstanceSigs
+    ImportQualifiedPost
     LambdaCase
     LiberalTypeSynonyms
-    MagicHash
     MultiParamTypeClasses
     MultiWayIf
     NoImplicitPrelude
     NoMonomorphismRestriction
     NumericUnderscores
     OverloadedStrings
-    ParallelListComp
     PatternGuards
     QuasiQuotes
     RankNTypes
     RecordWildCards
+    RoleAnnotations
     ScopedTypeVariables
     StandaloneDeriving
     StrictData
-    TemplateHaskell
     TupleSections
     TypeApplications
     TypeFamilies
     TypeOperators
-    UnboxedTuples
-
-  default-language: Haskell2010
 
 library
   import: base-settings
