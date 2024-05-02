@@ -1,17 +1,17 @@
 module Main where
 
 import Control.Concurrent.Async (race)
-import qualified Data.ByteString.Char8 as B8
-import qualified Data.Text as Text
-import qualified Hasql.Connection as Connection
-import qualified Hasql.Decoders as Decoders
-import qualified Hasql.Encoders as Encoders
+import Data.ByteString.Char8 qualified as B8
+import Data.Text qualified as Text
+import Hasql.Connection qualified as Connection
+import Hasql.Decoders qualified as Decoders
+import Hasql.Encoders qualified as Encoders
 import Hasql.Pool
-import qualified Hasql.Pool.Config as Config
-import qualified Hasql.Session as Session
-import qualified Hasql.Statement as Statement
-import qualified System.Environment
-import qualified System.Random.Stateful as Random
+import Hasql.Pool.Config qualified as Config
+import Hasql.Session qualified as Session
+import Hasql.Statement qualified as Statement
+import System.Environment qualified
+import System.Random.Stateful qualified as Random
 import Test.Hspec
 import Prelude
 

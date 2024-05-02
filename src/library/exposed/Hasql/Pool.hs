@@ -10,16 +10,16 @@ module Hasql.Pool
   )
 where
 
-import qualified Data.Text.Encoding as Text
-import qualified Data.Text.Encoding.Error as Text
-import qualified Data.UUID.V4 as Uuid
+import Data.Text.Encoding qualified as Text
+import Data.Text.Encoding.Error qualified as Text
+import Data.UUID.V4 qualified as Uuid
 import Hasql.Connection (Connection)
-import qualified Hasql.Connection as Connection
-import qualified Hasql.Pool.Config.Config as Config
+import Hasql.Connection qualified as Connection
+import Hasql.Pool.Config.Config qualified as Config
 import Hasql.Pool.Observation
 import Hasql.Pool.Prelude
-import qualified Hasql.Pool.SessionErrorDestructors as ErrorsDestruction
-import qualified Hasql.Session as Session
+import Hasql.Pool.SessionErrorDestructors qualified as ErrorsDestruction
+import Hasql.Session qualified as Session
 
 -- | A connection tagged with metadata.
 data Entry = Entry
