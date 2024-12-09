@@ -6,7 +6,7 @@ import Hasql.Pool.Observation (Observation)
 import Hasql.Pool.Prelude
 import Hasql.Session qualified as Session
 
--- | Configufation for Hasql connection pool.
+-- | Configuration for Hasql connection pool.
 data Config = Config
   { size :: Int,
     acquisitionTimeout :: DiffTime,
