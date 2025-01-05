@@ -1,9 +1,10 @@
 module Main where
 
 import Control.Concurrent.Async (race)
-import Data.ByteString.Char8 qualified as B8
 import Data.Text qualified as Text
 import Hasql.Connection qualified as Connection
+import Hasql.Connection.Setting qualified as Connection.Setting
+import Hasql.Connection.Setting.Connection qualified as Connection.Setting.Connection
 import Hasql.Decoders qualified as Decoders
 import Hasql.Encoders qualified as Encoders
 import Hasql.Pool
@@ -17,8 +18,8 @@ import Prelude
 
 main :: IO ()
 main = do
-  connectionSettings <- getConnectionSettings
-  let withPool poolSize acqTimeout maxLifetime maxIdletime connectionSettings =
+  connectionString <- getConnectionString
+  let withPool poolSize acqTimeout maxLifetime maxIdletime connectionString =
         bracket
           ( acquire
               ( Config.settings
@@ -26,13 +27,16 @@ main = do
                     Config.acquisitionTimeout acqTimeout,
                     Config.agingTimeout maxLifetime,
                     Config.idlenessTimeout maxIdletime,
-                    Config.staticConnectionSettings connectionSettings
+                    Config.staticConnectionSettings
+                      [ Connection.Setting.connection
+                          (Connection.Setting.Connection.string connectionString)
+                      ]
                   ]
               )
           )
           release
       withDefaultPool =
-        withPool 3 10 1_800 1_800 connectionSettings
+        withPool 3 10 1_800 1_800 connectionString
 
   hspec . describe "" $ do
     it "Releases a spot in the pool when there is a query error" $ withDefaultPool $ \pool -> do
@@ -75,12 +79,12 @@ main = do
         setSettingSession "testing.foo" "hello world"
         getSettingSession "testing.foo"
       res `shouldBe` Right (Just "hello world")
-    it "Session variables stay set when a connection gets reused" $ withPool 1 10 1_800 1_800 connectionSettings $ \pool -> do
+    it "Session variables stay set when a connection gets reused" $ withPool 1 10 1_800 1_800 connectionString $ \pool -> do
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       res2 <- use pool $ getSettingSession "testing.foo"
       res2 `shouldBe` Right (Just "hello world")
-    it "Releasing the pool resets session variables" $ withPool 1 10 1_800 1_800 connectionSettings $ \pool -> do
+    it "Releasing the pool resets session variables" $ withPool 1 10 1_800 1_800 connectionString $ \pool -> do
       res <- use pool $ setSettingSession "testing.foo" "hello world"
       res `shouldBe` Right ()
       release pool
@@ -89,7 +93,7 @@ main = do
     it "Times out connection acquisition"
       $
       -- 1ms timeout
-      withPool 1 0.001 1_800 1_800 connectionSettings
+      withPool 1 0.001 1_800 1_800 connectionString
       $ \pool -> do
         sleeping <- newEmptyMVar
         t0 <- getCurrentTime
@@ -111,7 +115,7 @@ main = do
     it "Passively times out old connections (maxLifetime)"
       $
       -- 0.5s connection lifetime
-      withPool 1 10 0.5 1_800 connectionSettings
+      withPool 1 10 0.5 1_800 connectionString
       $ \pool -> do
         res <- use pool $ setSettingSession "testing.foo" "hello world"
         res `shouldBe` Right ()
@@ -121,14 +125,14 @@ main = do
         res3 <- use pool $ getSettingSession "testing.foo"
         res3 `shouldBe` Right Nothing
     it "Counts active connections" $ do
-      (taggedConnectionSettings, appName) <- tagConnection connectionSettings
+      (taggedConnectionSettings, appName) <- tagConnection connectionString
       withPool 3 10 1_800 1_800 taggedConnectionSettings $ \pool -> do
         res <- use pool $ countConnectionsSession appName
         res `shouldBe` Right 1
 
     it "Actively times out old connections (maxLifetime)" $ do
       withDefaultPool $ \countPool -> do
-        (taggedConnectionSettings, appName) <- tagConnection connectionSettings
+        (taggedConnectionSettings, appName) <- tagConnection connectionString
         withPool 3 10 0.5 1_800 taggedConnectionSettings $ \limitedPool -> do
           res <- use limitedPool $ selectOneSession
           res `shouldBe` Right 1
@@ -139,7 +143,7 @@ main = do
           res3 `shouldBe` Right 0
     it "Times out old connections (maxIdletime)" $ do
       -- 0.5s connection idle time
-      withPool 1 10 1_800 0.5 connectionSettings $ \pool -> do
+      withPool 1 10 1_800 0.5 connectionString $ \pool -> do
         res <- use pool $ setSettingSession "testing.foo" "hello world"
         res `shouldBe` Right ()
         res2 <- use pool $ getSettingSession "testing.foo"
@@ -156,9 +160,9 @@ main = do
         res4 <- use pool $ getSettingSession "testing.foo"
         res4 `shouldBe` Right Nothing
 
-getConnectionSettings :: IO Connection.Settings
-getConnectionSettings =
-  B8.unwords
+getConnectionString :: IO Text
+getConnectionString =
+  Text.unwords
     . catMaybes
     <$> sequence
       [ setting "host" $ defaultEnv "POSTGRES_HOST" "localhost",
@@ -168,17 +172,17 @@ getConnectionSettings =
         setting "dbname" $ defaultEnv "POSTGRES_DBNAME" "postgres"
       ]
   where
-    maybeEnv env = fmap B8.pack <$> System.Environment.lookupEnv env
+    maybeEnv env = fmap Text.pack <$> System.Environment.lookupEnv env
     defaultEnv env val = Just . fromMaybe val <$> maybeEnv env
     setting label getEnv = do
       val <- getEnv
       return $ (\v -> label <> "=" <> v) <$> val
 
-tagConnection :: Connection.Settings -> IO (Connection.Settings, Text)
-tagConnection connectionSettings = do
+tagConnection :: Text -> IO (Text, Text)
+tagConnection connectionString = do
   tag <- Random.uniformWord32 Random.globalStdGen
   let appName = "hasql-pool-test-" <> show tag
-  return (connectionSettings <> " application_name=" <> B8.pack appName, Text.pack appName)
+  return (connectionString <> " application_name=" <> Text.pack appName, Text.pack appName)
 
 selectOneSession :: Session.Session Int64
 selectOneSession =

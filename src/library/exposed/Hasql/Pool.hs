@@ -15,6 +15,7 @@ import Data.Text.Encoding.Error qualified as Text
 import Data.UUID.V4 qualified as Uuid
 import Hasql.Connection (Connection)
 import Hasql.Connection qualified as Connection
+import Hasql.Connection.Setting qualified as Connection.Setting
 import Hasql.Pool.Config.Config qualified as Config
 import Hasql.Pool.Observation
 import Hasql.Pool.Prelude
@@ -42,7 +43,7 @@ data Pool = Pool
   { -- | Pool size.
     poolSize :: Int,
     -- | Connection settings.
-    poolFetchConnectionSettings :: IO Connection.Settings,
+    poolFetchConnectionSettings :: IO [Connection.Setting.Setting],
     -- | Acquisition timeout, in microseconds.
     poolAcquisitionTimeout :: Int,
     -- | Maximal connection lifetime, in nanoseconds.

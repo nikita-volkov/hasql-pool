@@ -2,3 +2,8 @@ packages: .
 allow-newer:
   , *:base
   , *:template-haskell
+
+source-repository-package
+  type: git
+  location: https://github.com/nikita-volkov/hasql.git
+  tag: a86b57cc9a2e0ab7b8b061ccbb9d51e63d9c62b8
