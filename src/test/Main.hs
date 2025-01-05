@@ -44,27 +44,27 @@ main = do
         Left (SessionUsageError (Session.QueryError _ _ (Session.ClientError _))) -> True
         _ -> False
     it "Connection errors cause eviction of connection" $ withDefaultPool $ \pool -> do
-      res <- use pool $ closeConnSession >> selectOneSession
-      res <- use pool $ closeConnSession >> selectOneSession
-      res <- use pool $ closeConnSession >> selectOneSession
+      _ <- use pool $ closeConnSession >> selectOneSession
+      _ <- use pool $ closeConnSession >> selectOneSession
+      _ <- use pool $ closeConnSession >> selectOneSession
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
     it "Connection gets returned to the pool after normal use" $ withDefaultPool $ \pool -> do
-      res <- use pool $ selectOneSession
-      res <- use pool $ selectOneSession
-      res <- use pool $ selectOneSession
-      res <- use pool $ selectOneSession
+      _ <- use pool $ selectOneSession
+      _ <- use pool $ selectOneSession
+      _ <- use pool $ selectOneSession
+      _ <- use pool $ selectOneSession
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
     it "Connection gets returned to the pool after non-connection error" $ withDefaultPool $ \pool -> do
-      res <- use pool $ badQuerySession
-      res <- use pool $ badQuerySession
-      res <- use pool $ badQuerySession
-      res <- use pool $ badQuerySession
+      _ <- use pool $ badQuerySession
+      _ <- use pool $ badQuerySession
+      _ <- use pool $ badQuerySession
+      _ <- use pool $ badQuerySession
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
     it "The pool remains usable after release" $ withDefaultPool $ \pool -> do
-      res <- use pool $ selectOneSession
+      _ <- use pool $ selectOneSession
       release pool
       res <- use pool $ selectOneSession
       shouldSatisfy res $ isRight
@@ -145,7 +145,7 @@ main = do
         res2 <- use pool $ getSettingSession "testing.foo"
         res2 `shouldBe` Right (Just "hello world")
         -- busy sleep, to keep connection alive
-        forM_ [1 .. 10] $ \_ -> do
+        forM_ [1 :: Int .. 10] $ \_ -> do
           r <- use pool $ selectOneSession
           r `shouldBe` Right 1
           threadDelay 100_000 -- 0.1s
