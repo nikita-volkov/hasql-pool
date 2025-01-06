@@ -1,6 +1,6 @@
 module Hasql.Pool.Config.Setting where
 
-import Hasql.Connection qualified as Connection
+import Hasql.Connection.Setting qualified as Connection.Setting
 import Hasql.Pool.Config.Config (Config)
 import Hasql.Pool.Config.Config qualified as Config
 import Hasql.Pool.Observation (Observation)
@@ -56,7 +56,7 @@ idlenessTimeout x =
 -- By default it is:
 --
 -- > "postgresql://postgres:postgres@localhost:5432/postgres"
-staticConnectionSettings :: Connection.Settings -> Setting
+staticConnectionSettings :: [Connection.Setting.Setting] -> Setting
 staticConnectionSettings x =
   Setting (\config -> config {Config.connectionSettingsProvider = pure x})
 
@@ -70,7 +70,7 @@ staticConnectionSettings x =
 -- By default it is:
 --
 -- > pure "postgresql://postgres:postgres@localhost:5432/postgres"
-dynamicConnectionSettings :: IO Connection.Settings -> Setting
+dynamicConnectionSettings :: IO [Connection.Setting.Setting] -> Setting
 dynamicConnectionSettings x =
   Setting (\config -> config {Config.connectionSettingsProvider = x})
 
