@@ -88,7 +88,7 @@ library
   build-depends:
     base >=4.11 && <5,
     bytestring >=0.10 && <0.14,
-    hasql >=1.7 && <1.9,
+    hasql >=1.9 && <1.10,
     stm >=2.5 && <3,
     text >=1.2 && <3,
     time >=1.9 && <2,
