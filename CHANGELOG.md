@@ -1,3 +1,7 @@
+# 1.3
+
+- Adapt to the new settings model of `hasql-1.9`
+
 # 1.2
 
 - Migrated to `hasql-1.7`
