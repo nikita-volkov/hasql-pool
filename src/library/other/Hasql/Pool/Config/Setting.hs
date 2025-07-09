@@ -51,8 +51,6 @@ idlenessTimeout x =
 
 -- | Connection string.
 --
--- You can use 'Hasql.Connection.settings' to construct it.
---
 -- By default it is:
 --
 -- > "postgresql://postgres:postgres@localhost:5432/postgres"
@@ -64,8 +62,6 @@ staticConnectionSettings x =
 --
 -- Gets used each time a connection gets established by the pool.
 -- This may be useful for some authorization models.
---
--- You can use 'Hasql.Connection.settings' to construct it.
 --
 -- By default it is:
 --
