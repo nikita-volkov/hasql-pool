@@ -99,6 +99,8 @@ test-suite test
   type: exitcode-stdio-1.0
   hs-source-dirs: src/test
   main-is: Main.hs
+  other-modules:
+    TestingKit.Testcontainers
   ghc-options: -threaded
   build-depends:
     async >=2.2 && <3,
@@ -107,3 +109,4 @@ test-suite test
     hspec >=2.6 && <3,
     random >=1.2 && <2,
     rerebase >=1.15 && <2,
+    testcontainers-postgresql >=0.0.2 && <0.1,
