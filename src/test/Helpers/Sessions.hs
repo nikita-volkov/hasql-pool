@@ -8,11 +8,6 @@ module Helpers.Sessions
   )
 where
 
-import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Reader (ask)
-import Data.Functor.Contravariant (contramap)
-import Data.Int (Int64)
-import Data.Text (Text)
 import Hasql.Connection qualified as Connection
 import Hasql.Decoders qualified as Decoders
 import Hasql.Encoders qualified as Encoders

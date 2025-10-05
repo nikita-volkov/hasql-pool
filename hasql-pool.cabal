@@ -101,9 +101,22 @@ test-suite test
   main-is: Main.hs
   other-modules:
     Helpers.Sessions
-    Helpers.Testcontainers
+    Hooks
+    Scripts
+    Specs.BySubject.Config.AgingTimeoutSpec
+    Specs.BySubject.Config.IdlenessTimeoutSpec
+    Specs.BySubject.Helpers.Sessions.CountConnectionsSpec
+    Specs.BySubject.Helpers.Sessions.GetSettingSpec
+    Specs.BySubject.ReleaseSpec
+    Specs.BySubject.SpecHook
+    Specs.BySubject.UsageError.AcquisitionTimeoutSpec
+    Specs.BySubject.UsageError.SessionSpec
+    Specs.BySubject.UseSpec
 
   ghc-options: -threaded
+  build-tool-depends:
+    hspec-discover:hspec-discover ^>=2.11.12
+
   build-depends:
     async >=2.2 && <3,
     hasql,
@@ -112,3 +125,4 @@ test-suite test
     random >=1.2 && <2,
     rerebase >=1.15 && <2,
     testcontainers-postgresql >=0.0.2 && <0.1,
+    text-builder >=1 && <1.1,
