@@ -97,7 +97,7 @@ library
 test-suite test
   import: base-settings
   type: exitcode-stdio-1.0
-  hs-source-dirs: src/test
+  hs-source-dirs: src/integration-tests
   main-is: Main.hs
   other-modules:
     Helpers.Hooks
