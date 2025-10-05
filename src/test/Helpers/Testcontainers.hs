@@ -1,9 +1,6 @@
-module TestingKit.Testcontainers where
+module Helpers.Testcontainers where
 
-import Control.Exception
-import Control.Monad
 import Data.Bool
-import Data.Text qualified as Text
 import Hasql.Connection.Setting qualified as Connection.Setting
 import Hasql.Connection.Setting.Connection qualified as Connection.Setting.Connection
 import Hasql.Connection.Setting.Connection.Param qualified as Connection.Setting.Connection.Param
@@ -25,29 +22,6 @@ withConnectionSettings action = do
               ]
           )
       ]
-  where
-    config =
-      TestcontainersPostgresql.Config
-        { forwardLogs = False,
-          distro = TestcontainersPostgresql.Distro17,
-          auth = TestcontainersPostgresql.TrustAuth
-        }
-
--- | Get connection settings as text for use with legacy string-based configuration
-getConnectionSettingsText :: IO Text.Text
-getConnectionSettingsText = do
-  settingsRef <- newIORef Nothing
-  TestcontainersPostgresql.run config \(host, port) -> do
-    let connectionText = 
-          Text.unwords
-            [ "host=" <> host,
-              "port=" <> Text.pack (show port),
-              "user=postgres",
-              "password=",
-              "dbname=postgres"
-            ]
-    writeIORef settingsRef (Just connectionText)
-  readIORef settingsRef >>= maybe (fail "Failed to get connection settings") return
   where
     config =
       TestcontainersPostgresql.Config
