@@ -97,12 +97,12 @@ library
 test-suite test
   import: base-settings
   type: exitcode-stdio-1.0
-  hs-source-dirs: src/test
+  hs-source-dirs: src/integration-tests
   main-is: Main.hs
   other-modules:
+    Helpers.Hooks
+    Helpers.Scripts
     Helpers.Sessions
-    Hooks
-    Scripts
     Specs.BySubject.Config.AgingTimeoutSpec
     Specs.BySubject.Config.IdlenessTimeoutSpec
     Specs.BySubject.Helpers.Sessions.CountConnectionsSpec
@@ -126,3 +126,4 @@ test-suite test
     rerebase >=1.15 && <2,
     testcontainers-postgresql >=0.0.2 && <0.1,
     text-builder >=1 && <1.1,
+    tuple ^>=0.3.0.2,

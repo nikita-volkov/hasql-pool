@@ -2,8 +2,8 @@ module Specs.BySubject.UsageError.AcquisitionTimeoutSpec where
 
 import Control.Concurrent.Async (race)
 import Hasql.Pool
-import Helpers.Sessions
-import Scripts qualified
+import Helpers.Scripts qualified as Scripts
+import Helpers.Sessions qualified as Sessions
 import Test.Hspec
 import Prelude
 
@@ -25,7 +25,7 @@ spec = do
           )
           ( do
               takeMVar sleeping
-              use pool $ selectOneSession
+              use pool $ Sessions.selectOne
           )
       t1 <- getCurrentTime
       res `shouldBe` Right (Left AcquisitionTimeoutUsageError)
