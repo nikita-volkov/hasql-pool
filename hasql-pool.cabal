@@ -99,6 +99,9 @@ test-suite test
   type: exitcode-stdio-1.0
   hs-source-dirs: src/test
   main-is: Main.hs
+  other-modules:
+    Helpers.Sessions
+
   ghc-options: -threaded
   build-depends:
     async >=2.2 && <3,
