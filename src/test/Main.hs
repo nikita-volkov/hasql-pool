@@ -122,23 +122,26 @@ spec = Testcontainers.aroundAllWithConnectionSettings do
       res3 <- use pool $ getSettingSession "testing.foo"
       res3 `shouldBe` Right Nothing
 
-  it "Counts active connections" \connectionSettings -> do
-    (taggedConnectionSettings, appName) <- tagConnection connectionSettings
-    withPool 3 10 1_800 1_800 taggedConnectionSettings \pool -> do
-      res <- use pool $ countConnectionsSession appName
-      res `shouldBe` Right 1
-
-  it "Actively times out old connections (maxLifetime)" \connectionSettings -> do
-    withDefaultPool connectionSettings \countPool -> do
-      (taggedConnectionSettings, appName) <- tagConnection connectionSettings
-      withPool 3 10 0.5 1_800 taggedConnectionSettings \limitedPool -> do
-        res <- use limitedPool $ selectOneSession
+  it "Counts active connections" \_ -> do
+    appName <- ("hasql-pool-test-" <>) . Text.pack . show <$> Random.uniformWord32 Random.globalStdGen
+    Testcontainers.withConnectionSettingsAndAppName appName \(taggedConnectionSettings, _) -> do
+      withPool 3 10 1_800 1_800 taggedConnectionSettings \pool -> do
+        res <- use pool $ countConnectionsSession appName
         res `shouldBe` Right 1
-        res2 <- use countPool $ countConnectionsSession appName
-        res2 `shouldBe` Right 1
-        threadDelay 1_000_000 -- 1s
-        res3 <- use countPool $ countConnectionsSession appName
-        res3 `shouldBe` Right 0
+
+  it "Actively times out old connections (maxLifetime)" \_ -> do
+    appName <- ("hasql-pool-test-" <>) . Text.pack . show <$> Random.uniformWord32 Random.globalStdGen
+    Testcontainers.withConnectionSettingsEx \(baseSettings, makeTagged) -> do
+      let taggedConnectionSettings = makeTagged appName
+      withDefaultPool baseSettings \countPool -> do
+        withPool 3 10 0.5 1_800 taggedConnectionSettings \limitedPool -> do
+          res <- use limitedPool $ selectOneSession
+          res `shouldBe` Right 1
+          res2 <- use countPool $ countConnectionsSession appName
+          res2 `shouldBe` Right 1
+          threadDelay 1_000_000 -- 1s
+          res3 <- use countPool $ countConnectionsSession appName
+          res3 `shouldBe` Right 0
 
   it "Times out old connections (maxIdletime)" \connectionSettings -> do
     -- 0.5s connection idle time
@@ -176,17 +179,3 @@ withPool poolSize acqTimeout maxLifetime maxIdletime connectionSettings =
 
 withDefaultPool :: [Connection.Setting.Setting] -> (Pool -> IO a) -> IO a
 withDefaultPool = withPool 3 10 1_800 1_800
-
-tagConnection :: [Connection.Setting.Setting] -> IO ([Connection.Setting.Setting], Text.Text)
-tagConnection baseSettings = do
-  tag <- Random.uniformWord32 Random.globalStdGen
-  let appName = "hasql-pool-test-" <> Text.pack (show tag)
-      -- Add application_name to the connection settings
-      taggedSettings =
-        baseSettings
-          ++ [ Connection.Setting.connection
-                 ( Connection.Setting.Connection.params
-                     [Connection.Setting.Connection.Param.other "application_name" appName]
-                 )
-             ]
-  return (taggedSettings, appName)
