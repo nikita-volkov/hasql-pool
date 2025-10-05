@@ -126,3 +126,4 @@ test-suite test
     rerebase >=1.15 && <2,
     testcontainers-postgresql >=0.0.2 && <0.1,
     text-builder >=1 && <1.1,
+    tuple ^>=0.3.0.2,

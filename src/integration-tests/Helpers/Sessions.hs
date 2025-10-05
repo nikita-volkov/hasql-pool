@@ -8,6 +8,7 @@ module Helpers.Sessions
   )
 where
 
+import Data.Tuple.All
 import Hasql.Connection qualified as Connection
 import Hasql.Decoders qualified as Decoders
 import Hasql.Encoders qualified as Encoders
@@ -39,8 +40,10 @@ setSetting name value = do
   where
     statement = Statement.Statement "SELECT set_config($1, $2, false)" encoder Decoders.noResult True
     encoder =
-      contramap fst (Encoders.param (Encoders.nonNullable Encoders.text))
-        <> contramap snd (Encoders.param (Encoders.nonNullable Encoders.text))
+      mconcat
+        [ sel1 >$< Encoders.param (Encoders.nonNullable Encoders.text),
+          sel2 >$< Encoders.param (Encoders.nonNullable Encoders.text)
+        ]
 
 getSetting :: Text -> Session.Session (Maybe Text)
 getSetting name = do
