@@ -105,6 +105,7 @@ test-suite test
     Helpers.Sessions
     Specs.BySubject.Config.AgingTimeoutSpec
     Specs.BySubject.Config.IdlenessTimeoutSpec
+    Specs.BySubject.Config.InitSessionSpec
     Specs.BySubject.Helpers.Sessions.CountConnectionsSpec
     Specs.BySubject.Helpers.Sessions.GetSettingSpec
     Specs.BySubject.ReleaseSpec

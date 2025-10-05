@@ -63,4 +63,14 @@ generateName prefix = do
       ]
 
 generateVarname :: IO Text
-generateVarname = generateName "testing.v"
+generateVarname = do
+  uniqueNum1 <- Random.uniformWord64 Random.globalStdGen
+  uniqueNum2 <- Random.uniformWord64 Random.globalStdGen
+  pure
+    $ TextBuilder.toText
+    $ mconcat
+    $ [ "testing.v",
+        TextBuilder.decimal uniqueNum1,
+        "v",
+        TextBuilder.decimal uniqueNum2
+      ]
