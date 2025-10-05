@@ -22,7 +22,7 @@ spec = do
   it "Passively times out old connections" \scopeParams -> do
     -- 0.5s connection lifetime
     Scripts.onAutotaggedPool 1 10 0.5 1_800 scopeParams \_ pool -> do
-      varName <- Scripts.generateName "testing.v"
+      varName <- Scripts.generateVarname
       res <- use pool $ Sessions.setSetting varName "hello world"
       res `shouldBe` Right ()
       res2 <- use pool $ Sessions.getSetting varName

@@ -25,7 +25,7 @@ spec = do
       res2 `shouldBe` Right (Just "hello world")
 
   it "Releasing the pool resets session variables" \scopeParams -> do
-    varName <- Scripts.generateName "testing.v"
+    varName <- Scripts.generateVarname
     Scripts.onAutotaggedPool 1 10 1_800 1_800 scopeParams \_ pool -> do
       res <- use pool $ Sessions.setSetting varName "hello world"
       res `shouldBe` Right ()

@@ -27,7 +27,8 @@ badQuery :: Session.Session ()
 badQuery =
   Session.statement () statement
   where
-    statement = Statement.Statement "zzz" Encoders.noParams Decoders.noResult True
+    statement =
+      Statement.Statement "zzz" Encoders.noParams Decoders.noResult True
 
 closeConn :: Session.Session ()
 closeConn = do
@@ -38,7 +39,8 @@ setSetting :: Text -> Text -> Session.Session ()
 setSetting name value = do
   Session.statement (name, value) statement
   where
-    statement = Statement.Statement "SELECT set_config($1, $2, false)" encoder Decoders.noResult True
+    statement =
+      Statement.Statement "SELECT set_config($1, $2, false)" encoder Decoders.noResult True
     encoder =
       mconcat
         [ sel1 >$< Encoders.param (Encoders.nonNullable Encoders.text),

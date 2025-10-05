@@ -61,3 +61,6 @@ generateName prefix = do
         TextBuilder.decimal uniqueNum1,
         TextBuilder.decimal uniqueNum2
       ]
+
+generateVarname :: IO Text
+generateVarname = generateName "testing.v"
