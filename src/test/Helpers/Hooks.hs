@@ -1,5 +1,5 @@
 -- | Hooks for Hspec.
-module Hooks where
+module Helpers.Hooks where
 
 import Data.Bool
 import TestcontainersPostgresql qualified

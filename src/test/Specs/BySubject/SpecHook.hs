@@ -1,8 +1,8 @@
 -- Docs: https://hspec.github.io/hspec-discover.html
 module Specs.BySubject.SpecHook where
 
-import Hooks qualified
-import Scripts qualified
+import Helpers.Hooks qualified as Hooks
+import Helpers.Scripts qualified as Scripts
 import Test.Hspec
 import Prelude
 

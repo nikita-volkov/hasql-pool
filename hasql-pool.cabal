@@ -100,9 +100,9 @@ test-suite test
   hs-source-dirs: src/test
   main-is: Main.hs
   other-modules:
+    Helpers.Hooks
+    Helpers.Scripts
     Helpers.Sessions
-    Hooks
-    Scripts
     Specs.BySubject.Config.AgingTimeoutSpec
     Specs.BySubject.Config.IdlenessTimeoutSpec
     Specs.BySubject.Helpers.Sessions.CountConnectionsSpec

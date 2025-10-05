@@ -1,4 +1,4 @@
-module Scripts where
+module Helpers.Scripts where
 
 import Hasql.Connection.Setting qualified as Connection.Setting
 import Hasql.Connection.Setting.Connection qualified as Connection.Setting.Connection
