@@ -11,7 +11,7 @@ spec = do
   it "Times out old connections (maxIdletime)" \scopeParams -> do
     -- 0.5s connection idle time
     Scripts.onAutotaggedPool 1 10 1_800 0.5 scopeParams \_ pool -> do
-      varName <- Scripts.generateName "var-"
+      varName <- Scripts.generateName "testing.v"
       res <- use pool $ Sessions.setSetting varName "hello world"
       res `shouldBe` Right ()
       res2 <- use pool $ Sessions.getSetting varName
