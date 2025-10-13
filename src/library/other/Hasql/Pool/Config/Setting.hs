@@ -88,6 +88,10 @@ observationHandler x =
 --
 -- Gets executed on every connection upon acquisition.
 -- Lets you specify the connection-wide settings.
+--
+-- E.g., you can set the search path for all the sessions executed by the pool by executing the following:
+--
+-- > initSession (Session.sql "SET search_path TO schema1, schema2, public;")
 initSession :: Session.Session () -> Setting
 initSession x =
   Setting (\config -> config {Config.initSession = x})
