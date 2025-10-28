@@ -1,6 +1,5 @@
 module Specs.BySubject.UsageError.SessionSpec where
 
-import Hasql.Errors qualified as Errors
 import Hasql.Pool
 import Helpers.Scripts qualified as Scripts
 import Helpers.Sessions qualified as Sessions

@@ -10,8 +10,6 @@ module Hasql.Pool
   )
 where
 
-import Data.Text.Encoding qualified as Text
-import Data.Text.Encoding.Error qualified as Text
 import Data.UUID.V4 qualified as Uuid
 import Hasql.Connection (Connection)
 import Hasql.Connection qualified as Connection
