@@ -1,3 +1,12 @@
+# 1.4
+
+- Migrated to `hasql-1.10`
+- Updated connection settings API to use monoid-based `Settings` instead of list-based `[Setting]`
+- Updated error types to use `Hasql.Errors` module instead of `Hasql.Session` and `Hasql.Connection`
+- Changed session execution API from `Session.run session connection` to `Connection.use connection session`
+- Error handling now uses `ConnectionSessionError` for connection-level issues instead of `ClientError`
+- Updated statement construction to use `Statement.preparable` and `Statement.unpreparable` instead of direct constructor
+
 # 1.3
 
 - Adapt to the new settings model of `hasql-1.9`
