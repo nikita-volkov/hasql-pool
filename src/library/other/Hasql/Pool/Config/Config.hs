@@ -1,6 +1,6 @@
 module Hasql.Pool.Config.Config where
 
-import Hasql.Connection.Setting qualified as Connection.Setting
+import Hasql.Connection.Settings qualified as Connection.Settings
 import Hasql.Pool.Config.Defaults qualified as Defaults
 import Hasql.Pool.Observation (Observation)
 import Hasql.Pool.Prelude
@@ -12,7 +12,7 @@ data Config = Config
     acquisitionTimeout :: DiffTime,
     agingTimeout :: DiffTime,
     idlenessTimeout :: DiffTime,
-    connectionSettingsProvider :: IO [Connection.Setting.Setting],
+    connectionSettingsProvider :: IO Connection.Settings.Settings,
     observationHandler :: Observation -> IO (),
     initSession :: Session.Session ()
   }

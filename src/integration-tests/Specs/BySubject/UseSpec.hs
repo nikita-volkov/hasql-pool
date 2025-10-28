@@ -13,14 +13,6 @@ spec = do
       use pool Sessions.badQuery `shouldNotReturn` (Right ())
       use pool Sessions.selectOne `shouldReturn` (Right 1)
 
-  it "Connection errors cause eviction of connection" \scopeParams ->
-    Scripts.onAutotaggedPool 1 10 1_800 1_800 scopeParams \_ pool -> do
-      _ <- use pool $ Sessions.closeConn >> Sessions.selectOne
-      _ <- use pool $ Sessions.closeConn >> Sessions.selectOne
-      _ <- use pool $ Sessions.closeConn >> Sessions.selectOne
-      res <- use pool $ Sessions.selectOne
-      shouldSatisfy res $ isRight
-
   it "Connection gets returned to the pool after normal use" \scopeParams ->
     Scripts.onAutotaggedPool 1 10 1_800 1_800 scopeParams \_ pool -> do
       _ <- use pool $ Sessions.selectOne

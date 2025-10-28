@@ -4,8 +4,8 @@
 -- Specific interpreters are encouraged to be created as extension libraries.
 module Hasql.Pool.Observation where
 
+import Hasql.Errors qualified as Errors
 import Hasql.Pool.Prelude
-import Hasql.Session qualified as Session
 
 -- | An observation of a change of the state of a pool.
 data Observation
@@ -40,7 +40,7 @@ data ConnectionReadyForUseReason
   = -- | Connection just got established.
     EstablishedConnectionReadyForUseReason
   | -- | Session execution ended with a failure that does not require a connection reset.
-    SessionFailedConnectionReadyForUseReason Session.SessionError
+    SessionFailedConnectionReadyForUseReason Errors.SessionError
   | -- | Session execution ended with success.
     SessionSucceededConnectionReadyForUseReason
   deriving (Show, Eq)
@@ -56,5 +56,5 @@ data ConnectionTerminationReason
   | -- | User has invoked the 'Hasql.Pool.release' procedure.
     ReleaseConnectionTerminationReason
   | -- | Initialization session failure.
-    InitializationErrorTerminationReason Session.SessionError
+    InitializationErrorTerminationReason Errors.SessionError
   deriving (Show, Eq)
