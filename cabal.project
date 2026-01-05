@@ -7,4 +7,4 @@ allow-newer:
 source-repository-package
   type: git
   location: https://github.com/nikita-volkov/hasql
-  tag: db939c49c55a8853d912962086e6c5f819a02f7a
+  tag: 82d2fbd0379a13d9d538538d1e666774015c3728
