@@ -18,7 +18,7 @@ selectOne :: Session.Session Int64
 selectOne =
   Session.statement () statement
   where
-    statement = Statement.preparable "SELECT 1" Encoders.noParams decoder
+    statement = Statement.preparable "SELECT 1::bigint" Encoders.noParams decoder
     decoder = Decoders.singleRow (Decoders.column (Decoders.nonNullable Decoders.int8))
 
 badQuery :: Session.Session ()
