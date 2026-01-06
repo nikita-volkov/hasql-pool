@@ -125,6 +125,6 @@ test-suite test
     hspec >=2.6 && <3,
     random >=1.2 && <2,
     rerebase >=1.15 && <2,
-    testcontainers-postgresql >=0.0.2 && <0.1,
+    testcontainers-postgresql >=0.2 && <0.3,
     text-builder >=1 && <1.1,
     tuple ^>=0.3.0.2,

@@ -13,7 +13,7 @@ postgres17 handler =
   TestcontainersPostgresql.run
     TestcontainersPostgresql.Config
       { forwardLogs = False,
-        distro = TestcontainersPostgresql.Distro17,
+        tagName = "postgres:17",
         auth = TestcontainersPostgresql.TrustAuth
       }
     (\(host, portInt) -> handler (host, fromIntegral portInt))
