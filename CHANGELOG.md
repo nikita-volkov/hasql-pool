@@ -6,6 +6,7 @@
 - Changed session execution API from `Session.run session connection` to `Connection.use connection session`
 - Error handling now uses `ConnectionSessionError` for connection-level issues instead of `ClientError`
 - Updated statement construction to use `Statement.preparable` and `Statement.unpreparable` instead of direct constructor
+- Hid the `Defaults` module from the public API
 
 # 1.3
 
