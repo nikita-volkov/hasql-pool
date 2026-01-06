@@ -1,10 +1,9 @@
 module Hasql.Pool.SessionErrorDestructors where
 
+import Hasql.Errors qualified as Errors
 import Hasql.Pool.Prelude
-import Hasql.Session qualified as Session
 
-reset :: (Maybe ByteString -> x) -> x -> Session.SessionError -> x
+reset :: (Text -> x) -> x -> Errors.SessionError -> x
 reset onReset onNoReset = \case
-  Session.QueryError _ _ (Session.ClientError details) -> onReset details
-  Session.PipelineError (Session.ClientError details) -> onReset details
+  Errors.ConnectionSessionError details -> onReset details
   _ -> onNoReset

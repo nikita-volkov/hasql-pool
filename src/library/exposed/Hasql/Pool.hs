@@ -10,12 +10,11 @@ module Hasql.Pool
   )
 where
 
-import Data.Text.Encoding qualified as Text
-import Data.Text.Encoding.Error qualified as Text
 import Data.UUID.V4 qualified as Uuid
 import Hasql.Connection (Connection)
 import Hasql.Connection qualified as Connection
-import Hasql.Connection.Setting qualified as Connection.Setting
+import Hasql.Connection.Settings qualified as Connection.Settings
+import Hasql.Errors qualified as Errors
 import Hasql.Pool.Config.Config qualified as Config
 import Hasql.Pool.Observation
 import Hasql.Pool.Prelude
@@ -43,7 +42,7 @@ data Pool = Pool
   { -- | Pool size.
     poolSize :: Int,
     -- | Connection settings.
-    poolFetchConnectionSettings :: IO [Connection.Setting.Setting],
+    poolFetchConnectionSettings :: IO Connection.Settings.Settings,
     -- | Acquisition timeout, in microseconds.
     poolAcquisitionTimeout :: Int,
     -- | Maximal connection lifetime, in nanoseconds.
@@ -170,16 +169,21 @@ use Pool {..} sess = do
       poolObserver (ConnectionObservation id ConnectingConnectionStatus)
       Connection.acquire settings >>= \case
         Left connErr -> do
-          poolObserver (ConnectionObservation id (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (fmap (Text.decodeUtf8With Text.lenientDecode) connErr))))
+          let connErrText = case connErr of
+                Errors.NetworkingConnectionError details -> Just details
+                Errors.AuthenticationConnectionError details -> Just details
+                Errors.CompatibilityConnectionError details -> Just details
+                Errors.OtherConnectionError details -> if details == "" then Nothing else Just details
+          poolObserver (ConnectionObservation id (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason connErrText)))
           atomically $ modifyTVar' poolCapacity succ
           return $ Left $ ConnectionUsageError connErr
         Right connection -> do
-          Session.run poolInitSession connection >>= \case
+          Connection.use connection poolInitSession >>= \case
             Left err -> do
               Connection.release connection
               ErrorsDestruction.reset
                 ( \details -> do
-                    poolObserver (ConnectionObservation id (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (fmap (Text.decodeUtf8With Text.lenientDecode) details))))
+                    poolObserver (ConnectionObservation id (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (Just details))))
                 )
                 (poolObserver (ConnectionObservation id (TerminatedConnectionStatus (InitializationErrorTerminationReason err))))
                 err
@@ -206,7 +210,7 @@ use Pool {..} sess = do
 
     onLiveConn reuseVar entry = do
       poolObserver (ConnectionObservation (entryId entry) InUseConnectionStatus)
-      sessRes <- try @SomeException (Session.run sess (entryConnection entry))
+      sessRes <- try @SomeException (Connection.use (entryConnection entry) sess)
 
       case sessRes of
         Left exc -> do
@@ -217,7 +221,7 @@ use Pool {..} sess = do
             ( \details -> do
                 Connection.release (entryConnection entry)
                 atomically $ modifyTVar' poolCapacity succ
-                poolObserver (ConnectionObservation (entryId entry) (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (fmap (Text.decodeUtf8With Text.lenientDecode) details))))
+                poolObserver (ConnectionObservation (entryId entry) (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (Just details))))
                 return $ Left $ SessionUsageError err
             )
             ( do
@@ -244,9 +248,9 @@ use Pool {..} sess = do
 -- | Union over all errors that 'use' can result in.
 data UsageError
   = -- | Attempt to establish a connection failed.
-    ConnectionUsageError Connection.ConnectionError
+    ConnectionUsageError Errors.ConnectionError
   | -- | Session execution failed.
-    SessionUsageError Session.SessionError
+    SessionUsageError Errors.SessionError
   | -- | Timeout acquiring a connection.
     AcquisitionTimeoutUsageError
   deriving (Show, Eq)

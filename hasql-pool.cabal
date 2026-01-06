@@ -75,12 +75,12 @@ library
   exposed-modules:
     Hasql.Pool
     Hasql.Pool.Config
-    Hasql.Pool.Config.Defaults
     Hasql.Pool.Observation
 
   -- cabal-gild: discover src/library/other
   other-modules:
     Hasql.Pool.Config.Config
+    Hasql.Pool.Config.Defaults
     Hasql.Pool.Config.Setting
     Hasql.Pool.Prelude
     Hasql.Pool.SessionErrorDestructors
@@ -88,7 +88,7 @@ library
   build-depends:
     base >=4.11 && <5,
     bytestring >=0.10 && <0.14,
-    hasql >=1.9 && <1.10,
+    hasql >=1.10 && <1.11,
     stm >=2.5 && <3,
     text >=1.2 && <3,
     time >=1.9 && <2,
@@ -123,6 +123,7 @@ test-suite test
     hasql,
     hasql-pool,
     hspec >=2.6 && <3,
+    postgresql-libpq >=0.10 && <0.12,
     random >=1.2 && <2,
     rerebase >=1.15 && <2,
     testcontainers-postgresql >=0.2 && <0.3,

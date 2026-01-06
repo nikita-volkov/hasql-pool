@@ -1,8 +1,6 @@
 module Helpers.Scripts where
 
-import Hasql.Connection.Setting qualified as Connection.Setting
-import Hasql.Connection.Setting.Connection qualified as Connection.Setting.Connection
-import Hasql.Connection.Setting.Connection.Param qualified as Connection.Setting.Connection.Param
+import Hasql.Connection.Settings qualified as Connection.Settings
 import Hasql.Pool qualified as Pool
 import Hasql.Pool.Config qualified as Config
 import System.Random.Stateful qualified as Random
@@ -24,17 +22,14 @@ onTaggedPool poolSize acqTimeout maxLifetime maxIdletime appName (host, port) =
               Config.agingTimeout maxLifetime,
               Config.idlenessTimeout maxIdletime,
               Config.staticConnectionSettings
-                [ Connection.Setting.connection
-                    ( Connection.Setting.Connection.params
-                        [ Connection.Setting.Connection.Param.host host,
-                          Connection.Setting.Connection.Param.port (fromIntegral port),
-                          Connection.Setting.Connection.Param.user "postgres",
-                          Connection.Setting.Connection.Param.password "",
-                          Connection.Setting.Connection.Param.dbname "postgres",
-                          Connection.Setting.Connection.Param.other "application_name" appName
-                        ]
-                    )
-                ]
+                ( mconcat
+                    [ Connection.Settings.hostAndPort host (fromIntegral port),
+                      Connection.Settings.user "postgres",
+                      Connection.Settings.password "",
+                      Connection.Settings.dbname "postgres",
+                      Connection.Settings.applicationName appName
+                    ]
+                )
             ]
         )
     )
@@ -59,6 +54,7 @@ generateName prefix = do
     $ mconcat
     $ [ TextBuilder.text prefix,
         TextBuilder.decimal uniqueNum1,
+        "-",
         TextBuilder.decimal uniqueNum2
       ]
 
