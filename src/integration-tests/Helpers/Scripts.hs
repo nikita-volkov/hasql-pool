@@ -22,12 +22,13 @@ onTaggedPool poolSize acqTimeout maxLifetime maxIdletime appName (host, port) =
               Config.agingTimeout maxLifetime,
               Config.idlenessTimeout maxIdletime,
               Config.staticConnectionSettings
-                ( Connection.Settings.host host
-                    <> Connection.Settings.hostAndPort host (fromIntegral port)
-                    <> Connection.Settings.user "postgres"
-                    <> Connection.Settings.password ""
-                    <> Connection.Settings.dbname "postgres"
-                    <> Connection.Settings.applicationName appName
+                ( mconcat
+                    [ Connection.Settings.hostAndPort host (fromIntegral port),
+                      Connection.Settings.user "postgres",
+                      Connection.Settings.password "",
+                      Connection.Settings.dbname "postgres",
+                      Connection.Settings.applicationName appName
+                    ]
                 )
             ]
         )
@@ -53,6 +54,7 @@ generateName prefix = do
     $ mconcat
     $ [ TextBuilder.text prefix,
         TextBuilder.decimal uniqueNum1,
+        "-",
         TextBuilder.decimal uniqueNum2
       ]
 
