@@ -1,6 +1,7 @@
 module Helpers.Sessions
   ( selectOne,
     badQuery,
+    closeConn,
     setSetting,
     getSetting,
     countConnections,
@@ -8,6 +9,7 @@ module Helpers.Sessions
 where
 
 import Data.Tuple.All
+import Database.PostgreSQL.LibPQ qualified as Pq
 import Hasql.Decoders qualified as Decoders
 import Hasql.Encoders qualified as Encoders
 import Hasql.Session qualified as Session
@@ -27,6 +29,12 @@ badQuery =
   where
     statement =
       Statement.preparable "zzz" Encoders.noParams Decoders.noResult
+
+closeConn :: Session.Session ()
+closeConn =
+  Session.onLibpqConnection \conn -> do
+    Pq.finish conn
+    pure (Right (), conn)
 
 setSetting :: Text -> Text -> Session.Session ()
 setSetting name value = do
