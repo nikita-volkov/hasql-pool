@@ -51,7 +51,11 @@ data ConnectionTerminationReason
     AgingConnectionTerminationReason
   | -- | The timeout of how long a connection may remain idle in the pool has passed.
     IdlenessConnectionTerminationReason
-  | -- | Connectivity issues with the server.
+  | -- | The connection became unusable and had to be discarded.
+    --
+    -- This includes connectivity issues with the server as well as fatal
+    -- session errors that invalidate the connection's prepared statement or
+    -- type caches.
     NetworkErrorConnectionTerminationReason (Maybe Text)
   | -- | User has invoked the 'Hasql.Pool.release' procedure.
     ReleaseConnectionTerminationReason

@@ -217,19 +217,20 @@ use Pool {..} sess = do
           returnConn
           throwIO exc
         Right (Left err) ->
-          ErrorsDestruction.reset
-            ( \details -> do
-                Connection.release (entryConnection entry)
-                atomically $ modifyTVar' poolCapacity succ
-                poolObserver (ConnectionObservation (entryId entry) (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (Just details))))
-                return $ Left $ SessionUsageError err
-            )
-            ( do
-                returnConn
-                poolObserver (ConnectionObservation (entryId entry) (ReadyForUseConnectionStatus (SessionFailedConnectionReadyForUseReason err)))
-                return $ Left $ SessionUsageError err
-            )
-            err
+          if ErrorsDestruction.requiresConnectionDiscard err
+            then do
+              Connection.release (entryConnection entry)
+              atomically $ modifyTVar' poolCapacity succ
+              poolObserver
+                ( ConnectionObservation
+                    (entryId entry)
+                    (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (ErrorsDestruction.discardDetails err)))
+                )
+              return $ Left $ SessionUsageError err
+            else do
+              returnConn
+              poolObserver (ConnectionObservation (entryId entry) (ReadyForUseConnectionStatus (SessionFailedConnectionReadyForUseReason err)))
+              return $ Left $ SessionUsageError err
         Right (Right res) -> do
           returnConn
           poolObserver (ConnectionObservation (entryId entry) (ReadyForUseConnectionStatus SessionSucceededConnectionReadyForUseReason))
