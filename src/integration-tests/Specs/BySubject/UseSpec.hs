@@ -45,15 +45,15 @@ spec = do
       shouldSatisfy res $ isRight
 
   it "Cached type errors cause eviction of connection" \scopeParams -> do
-    typeName <- Scripts.generateName "cached-type-"
+    typeName <- Text.replace "-" "_" <$> Scripts.generateName "cached_type_"
     Scripts.onAutotaggedPool 1 10 1_800 1_800 scopeParams \_ pool -> do
       use pool (Session.script (createTypeSql typeName)) `shouldReturn` Right ()
       use pool (roundtripEnum typeName "ok") `shouldReturn` Right "ok"
       use pool (Session.script (recreateTypeSql typeName)) `shouldReturn` Right ()
-      use pool (roundtripEnum typeName "ok")
-        `shouldSatisfy` \case
-          Left (SessionUsageError _) -> True
-          _ -> False
+      res <- use pool (roundtripEnum typeName "ok")
+      shouldSatisfy res \case
+        Left (SessionUsageError _) -> True
+        _ -> False
       use pool (roundtripEnum typeName "ok") `shouldReturn` Right "ok"
 
 quoteIdentifier :: Text -> Text

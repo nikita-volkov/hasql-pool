@@ -98,13 +98,11 @@ test-suite test
   import: base-settings
   type: exitcode-stdio-1.0
   hs-source-dirs: src/integration-tests
-    src/library/other
   main-is: Main.hs
   other-modules:
     Helpers.Hooks
     Helpers.Scripts
     Helpers.Sessions
-    Specs.SessionErrorDestructorsSpec
     Specs.BySubject.Config.AgingTimeoutSpec
     Specs.BySubject.Config.IdlenessTimeoutSpec
     Specs.BySubject.Config.InitSessionSpec
