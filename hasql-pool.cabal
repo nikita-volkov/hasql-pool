@@ -68,17 +68,14 @@ common base-settings
 library
   import: base-settings
   hs-source-dirs:
-    src/library/exposed
-    src/library/other
+    src/library/
 
-  -- cabal-gild: discover src/library/exposed
   exposed-modules:
     Hasql.Pool
     Hasql.Pool.Config
     Hasql.Pool.Config.Defaults
     Hasql.Pool.Observation
 
-  -- cabal-gild: discover src/library/other
   other-modules:
     Hasql.Pool.Config.Config
     Hasql.Pool.Config.Setting
