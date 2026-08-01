@@ -14,7 +14,10 @@ requiresConnectionDiscard = \case
   Errors.MissingTypesSessionError {} -> True
   Errors.ScriptSessionError _ serverError -> isStaleServerError serverError
   Errors.StatementSessionError _ _ _ _ _ statementError -> statementRequiresConnectionDiscard statementError
-  Errors.DriverSessionError {} -> False
+  -- Driver errors indicate that Hasql or the server left the connection in an
+  -- unexpected state. In particular, Hasql closes the libpq connection when
+  -- cleanup after an interruption fails, so it must not be reused by the pool.
+  Errors.DriverSessionError {} -> True
 
 discardDetails :: Errors.SessionError -> Maybe Text
 discardDetails err =

@@ -3,6 +3,7 @@ module Specs.BySubject.UseSpec where
 import Data.Text qualified as Text
 import Hasql.Decoders qualified as Decoders
 import Hasql.Encoders qualified as Encoders
+import Hasql.Errors qualified as Errors
 import Hasql.Pool
 import Hasql.Session qualified as Session
 import Hasql.Statement qualified as Statement
@@ -25,6 +26,16 @@ spec = do
       _ <- use pool $ Sessions.closeConn >> Sessions.selectOne
       res <- use pool $ Sessions.selectOne
       shouldSatisfy res $ isRight
+
+  it "Driver errors cause eviction of connection" \scopeParams -> do
+    settingName <- Scripts.generateVarname
+    Scripts.onAutotaggedPool 1 10 1_800 1_800 scopeParams \_ pool -> do
+      use pool (Sessions.setSetting settingName "present") `shouldReturn` Right ()
+      result <- use pool driverError
+      result `shouldSatisfy` \case
+        Left (SessionUsageError (Errors.DriverSessionError _)) -> True
+        _ -> False
+      use pool (Sessions.getSetting settingName) `shouldReturn` Right Nothing
 
   it "Connection gets returned to the pool after normal use" \scopeParams ->
     Scripts.onAutotaggedPool 1 10 1_800 1_800 scopeParams \_ pool -> do
@@ -81,3 +92,8 @@ roundtripEnum typeName value =
         ("select $1 :: " <> quoteIdentifier typeName)
         (Encoders.param (Encoders.nonNullable (Encoders.enum Nothing typeName id)))
         (Decoders.singleRow (Decoders.column (Decoders.nonNullable (Decoders.enum Nothing typeName Just))))
+
+driverError :: Session.Session ()
+driverError =
+  Session.onLibpqConnection \connection ->
+    pure (Left (Errors.DriverSessionError "synthetic driver error"), connection)
