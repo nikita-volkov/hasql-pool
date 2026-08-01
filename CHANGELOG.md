@@ -1,3 +1,9 @@
+# 1.4.2.1
+
+## Fixes
+
+- Discard pooled connections after driver errors (#55)
+
 # 1.4
 
 - Migrated to `hasql-1.10`
