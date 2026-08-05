@@ -1,3 +1,9 @@
+# Upcoming
+
+## Fixes
+
+- Fix pool capacity leak when `initSession` fails (#56)
+
 # 1.4.2.1
 
 ## Fixes
