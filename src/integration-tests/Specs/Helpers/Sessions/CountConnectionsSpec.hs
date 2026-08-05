@@ -1,4 +1,4 @@
-module Specs.BySubject.Helpers.Sessions.CountConnectionsSpec where
+module Specs.Helpers.Sessions.CountConnectionsSpec where
 
 import Hasql.Pool
 import Helpers.Scripts qualified as Scripts

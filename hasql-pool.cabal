@@ -102,17 +102,16 @@ test-suite test
     Helpers.Hooks
     Helpers.Scripts
     Helpers.Sessions
-    Specs.BySubject.Config.AgingTimeoutSpec
-    Specs.BySubject.Config.IdlenessTimeoutSpec
-    Specs.BySubject.Config.InitSessionSpec
-    Specs.BySubject.Helpers.Sessions.CountConnectionsSpec
-    Specs.BySubject.Helpers.Sessions.GetSettingSpec
-    Specs.BySubject.ReleaseSpec
-    Specs.BySubject.SpecHook
-    Specs.BySubject.UsageError.AcquisitionTimeoutSpec
-    Specs.BySubject.UsageError.SessionSpec
-    Specs.BySubject.UseSpec
+    Specs.Config.AgingTimeoutSpec
+    Specs.Config.IdlenessTimeoutSpec
+    Specs.Config.InitSessionSpec
+    Specs.Helpers.Sessions.CountConnectionsSpec
+    Specs.Helpers.Sessions.GetSettingSpec
+    Specs.ReleaseSpec
     Specs.SpecHook
+    Specs.UsageError.AcquisitionTimeoutSpec
+    Specs.UsageError.SessionSpec
+    Specs.UseSpec
 
   ghc-options: -threaded
   build-tool-depends:

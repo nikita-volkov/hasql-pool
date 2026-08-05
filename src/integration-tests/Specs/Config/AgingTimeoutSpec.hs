@@ -1,4 +1,4 @@
-module Specs.BySubject.Config.AgingTimeoutSpec where
+module Specs.Config.AgingTimeoutSpec where
 
 import Hasql.Pool
 import Helpers.Scripts qualified as Scripts

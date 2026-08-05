@@ -1,4 +1,4 @@
-module Specs.BySubject.ReleaseSpec where
+module Specs.ReleaseSpec where
 
 import Hasql.Pool
 import Helpers.Scripts qualified as Scripts

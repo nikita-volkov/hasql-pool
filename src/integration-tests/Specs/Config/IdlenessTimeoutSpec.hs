@@ -1,4 +1,4 @@
-module Specs.BySubject.Config.IdlenessTimeoutSpec where
+module Specs.Config.IdlenessTimeoutSpec where
 
 import Hasql.Pool
 import Helpers.Scripts qualified as Scripts

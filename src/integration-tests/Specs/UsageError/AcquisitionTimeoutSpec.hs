@@ -1,4 +1,4 @@
-module Specs.BySubject.UsageError.AcquisitionTimeoutSpec where
+module Specs.UsageError.AcquisitionTimeoutSpec where
 
 import Control.Concurrent.Async (race)
 import Hasql.Pool

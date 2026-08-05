@@ -1,4 +1,4 @@
-module Specs.BySubject.UsageError.SessionSpec where
+module Specs.UsageError.SessionSpec where
 
 import Hasql.Pool
 import Helpers.Scripts qualified as Scripts

@@ -1,4 +1,4 @@
-module Specs.BySubject.UseSpec where
+module Specs.UseSpec where
 
 import Control.Concurrent.Async (race)
 import Data.Text qualified as Text
