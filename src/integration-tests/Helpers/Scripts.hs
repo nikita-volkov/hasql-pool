@@ -3,6 +3,7 @@ module Helpers.Scripts where
 import Hasql.Connection.Settings qualified as Connection.Settings
 import Hasql.Pool qualified as Pool
 import Hasql.Pool.Config qualified as Config
+import Hasql.Session qualified as Session
 import System.Random.Stateful qualified as Random
 import TextBuilder qualified
 import Prelude
@@ -40,6 +41,35 @@ onAutotaggedPool poolSize acqTimeout maxLifetime maxIdletime (host, port) cont =
   -- Generate app name
   appName <- generateName "hasql-pool-test-"
   onTaggedPool poolSize acqTimeout maxLifetime maxIdletime appName (host, port) (cont appName)
+
+onTaggedPoolWithInitSession :: Int -> DiffTime -> DiffTime -> DiffTime -> Session.Session () -> Text -> ScopeParams -> (Pool.Pool -> IO ()) -> IO ()
+onTaggedPoolWithInitSession poolSize acqTimeout maxLifetime maxIdletime initSession appName (host, port) =
+  bracket
+    ( Pool.acquire
+        ( Config.settings
+            [ Config.size poolSize,
+              Config.acquisitionTimeout acqTimeout,
+              Config.agingTimeout maxLifetime,
+              Config.idlenessTimeout maxIdletime,
+              Config.initSession initSession,
+              Config.staticConnectionSettings
+                ( mconcat
+                    [ Connection.Settings.hostAndPort host (fromIntegral port),
+                      Connection.Settings.user "postgres",
+                      Connection.Settings.password "",
+                      Connection.Settings.dbname "postgres",
+                      Connection.Settings.applicationName appName
+                    ]
+                )
+            ]
+        )
+    )
+    Pool.release
+
+onAutotaggedPoolWithInitSession :: Int -> DiffTime -> DiffTime -> DiffTime -> Session.Session () -> ScopeParams -> (Text -> Pool.Pool -> IO ()) -> IO ()
+onAutotaggedPoolWithInitSession poolSize acqTimeout maxLifetime maxIdletime initSession (host, port) cont = do
+  appName <- generateName "hasql-pool-test-"
+  onTaggedPoolWithInitSession poolSize acqTimeout maxLifetime maxIdletime initSession appName (host, port) (cont appName)
 
 onDefaultTaggedPool :: ScopeParams -> (Text -> Pool.Pool -> IO ()) -> IO ()
 onDefaultTaggedPool =
