@@ -4,9 +4,9 @@ import Hasql.Connection.Settings qualified as Connection.Settings
 import Hasql.Pool qualified as Pool
 import Hasql.Pool.Config qualified as Config
 import Hasql.Session qualified as Session
+import Prelude
 import System.Random.Stateful qualified as Random
 import TextBuilder qualified
-import Prelude
 
 -- |
 -- Parameters provided by the scope.

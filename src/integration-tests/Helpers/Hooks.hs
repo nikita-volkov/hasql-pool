@@ -2,8 +2,8 @@
 module Helpers.Hooks where
 
 import Data.Bool
-import TestcontainersPostgresql qualified
 import Prelude hiding (Handler)
+import TestcontainersPostgresql qualified
 
 -- | Testing action in the scope of the host name and port of a running fresh isolated postgres server.
 type Handler = (Text, Word16) -> IO ()

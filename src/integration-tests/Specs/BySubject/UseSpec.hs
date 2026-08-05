@@ -9,8 +9,8 @@ import Hasql.Session qualified as Session
 import Hasql.Statement qualified as Statement
 import Helpers.Scripts qualified as Scripts
 import Helpers.Sessions qualified as Sessions
-import Test.Hspec
 import Prelude
+import Test.Hspec
 
 spec :: SpecWith Scripts.ScopeParams
 spec = do
