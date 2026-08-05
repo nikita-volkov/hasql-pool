@@ -1,5 +1,6 @@
 module Specs.BySubject.UseSpec where
 
+import Control.Concurrent.Async (race)
 import Data.Text qualified as Text
 import Hasql.Decoders qualified as Decoders
 import Hasql.Encoders qualified as Encoders
@@ -54,6 +55,39 @@ spec = do
       _ <- use pool $ Sessions.badQuery
       res <- use pool $ Sessions.selectOne
       shouldSatisfy res $ isRight
+
+  -- https://github.com/nikita-volkov/hasql-pool/issues/38
+  --
+  -- When a session is interrupted by an asynchronous exception (e.g., a
+  -- caller-side timeout racing the query, as simulated here via `race`)
+  -- while it is genuinely blocked waiting on the server's response, the
+  -- underlying libpq connection is left mid-command: the query was sent,
+  -- but its result was never read. `onLiveConn` in Hasql.Pool.use still
+  -- unconditionally returns such a connection to the pool (the `Left exc`
+  -- branch calls `returnConn` for all exceptions, not just synchronous
+  -- ones), so the next `use` call hands out a connection whose protocol
+  -- state is desynced from libpq's expectations. This is a plausible root
+  -- cause of the "connection pointer is NULL" reports: two independent
+  -- consumers of hasql-pool end up driving the same libpq connection state
+  -- machine without coordination.
+  it "Does not return a connection to the pool when the session is interrupted by an asynchronous exception" \scopeParams ->
+    Scripts.onAutotaggedPool 1 10 1_800 1_800 scopeParams \_ pool -> do
+      started <- newEmptyMVar
+      _ <-
+        race
+          ( use pool do
+              liftIO $ putMVar started ()
+              Sessions.sleep 2
+          )
+          ( do
+              takeMVar started
+              -- Give the query time to actually reach the server and for
+              -- the client to start blocking on the socket read, as
+              -- opposed to being cancelled while still sending.
+              threadDelay 200_000
+          )
+      res <- use pool Sessions.selectOne
+      res `shouldSatisfy` isRight
 
   it "Cached type errors cause eviction of connection" \scopeParams -> do
     typeName <- Text.replace "-" "_" <$> Scripts.generateName "cached_type_"

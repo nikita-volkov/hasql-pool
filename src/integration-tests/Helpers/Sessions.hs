@@ -5,6 +5,7 @@ module Helpers.Sessions
     setSetting,
     getSetting,
     countConnections,
+    sleep,
   )
 where
 
@@ -63,3 +64,10 @@ countConnections appName = do
     statement = Statement.preparable "SELECT count(*) FROM pg_stat_activity WHERE application_name = $1" encoder decoder
     encoder = Encoders.param (Encoders.nonNullable Encoders.text)
     decoder = Decoders.singleRow (Decoders.column (Decoders.nonNullable Decoders.int8))
+
+sleep :: Double -> Session.Session ()
+sleep seconds =
+  Session.statement seconds statement
+  where
+    statement = Statement.preparable "SELECT pg_sleep($1)" encoder Decoders.noResult
+    encoder = Encoders.param (Encoders.nonNullable Encoders.float8)
