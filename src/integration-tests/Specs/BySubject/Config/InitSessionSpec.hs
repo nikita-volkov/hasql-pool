@@ -41,3 +41,19 @@ spec = do
       res <- use pool do
         Sessions.getSetting varName
       shouldBe res (Right (Just "1"))
+
+  -- https://github.com/nikita-volkov/hasql-pool/issues/56
+  it "Does not exhaust the pool capacity when it fails" \scopeParams -> do
+    -- Pool of size 1 whose init session always fails, with a short
+    -- acquisition timeout so that a leaked capacity slot shows up as
+    -- an AcquisitionTimeoutUsageError instead of hanging the test.
+    Scripts.onAutotaggedPoolWithInitSession 1 1 60 60 Sessions.badQuery scopeParams \_ pool -> do
+      res1 <- use pool Sessions.selectOne
+      res1 `shouldSatisfy` \case
+        Left (SessionUsageError _) -> True
+        _ -> False
+
+      res2 <- use pool Sessions.selectOne
+      res2 `shouldSatisfy` \case
+        Left (SessionUsageError _) -> True
+        _ -> False

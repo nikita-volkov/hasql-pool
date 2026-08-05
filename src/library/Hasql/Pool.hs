@@ -181,6 +181,7 @@ use Pool {..} sess = do
           Connection.use connection poolInitSession >>= \case
             Left err -> do
               Connection.release connection
+              atomically $ modifyTVar' poolCapacity succ
               ErrorsDestruction.reset
                 ( \details -> do
                     poolObserver (ConnectionObservation id (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (Just details))))
