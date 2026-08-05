@@ -1,3 +1,8 @@
+# Upcoming
+
+- Fix pool capacity leak when `initSession` fails (#56)
+- Fix background reaper never passively evicting idle connections: it used the connection-lifetime timeout instead of the idleness timeout when checking for idle connections
+
 # 1.3
 
 - Adapt to the new settings model of `hasql-1.9`
