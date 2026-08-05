@@ -86,6 +86,7 @@ library
     base >=4.11 && <5,
     bytestring >=0.10 && <0.14,
     hasql >=1.10 && <1.11,
+    pqi ^>=0.1,
     stm >=2.5 && <3,
     text >=1.2 && <3,
     time >=1.9 && <2,
@@ -97,6 +98,7 @@ test-suite test
   hs-source-dirs: src/integration-tests
   main-is: Main.hs
   other-modules:
+    Helpers.Adapters
     Helpers.Hooks
     Helpers.Scripts
     Helpers.Sessions
@@ -110,6 +112,7 @@ test-suite test
     Specs.BySubject.UsageError.AcquisitionTimeoutSpec
     Specs.BySubject.UsageError.SessionSpec
     Specs.BySubject.UseSpec
+    Specs.SpecHook
 
   ghc-options: -threaded
   build-tool-depends:
@@ -120,7 +123,9 @@ test-suite test
     hasql,
     hasql-pool,
     hspec >=2.6 && <3,
-    postgresql-libpq >=0.10 && <0.12,
+    pqi ^>=0.1,
+    pqi-ffi ^>=0.1,
+    pqi-native ^>=0.2,
     random >=1.2 && <2,
     rerebase >=1.15 && <2,
     testcontainers-postgresql >=0.2 && <0.3,

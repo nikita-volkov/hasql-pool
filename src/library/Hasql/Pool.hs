@@ -20,6 +20,7 @@ import Hasql.Pool.Observation
 import Hasql.Pool.Prelude
 import Hasql.Pool.SessionErrorDestructors qualified as ErrorsDestruction
 import Hasql.Session qualified as Session
+import Pqi qualified
 
 -- | A connection tagged with metadata.
 data Entry = Entry
@@ -41,6 +42,8 @@ entryIsIdle maxIdletime now Entry {..} =
 data Pool = Pool
   { -- | Pool size.
     poolSize :: Int,
+    -- | Adapter used to establish connections.
+    poolAdapter :: Pqi.Adapter,
     -- | Connection settings.
     poolFetchConnectionSettings :: IO Connection.Settings.Settings,
     -- | Acquisition timeout, in microseconds.
@@ -72,8 +75,10 @@ data Pool = Pool
 -- to 'use'.
 --
 -- If you want to ensure that the pool connects fine at the initialization phase, just run 'use' with an empty session (@pure ()@) and check for errors.
-acquire :: Config.Config -> IO Pool
-acquire config = do
+--
+-- The 'Pqi.Adapter' determines which connection implementation the pool uses, e.g. an FFI adapter backed by @postgresql-libpq@, or a pure Haskell one. Pick one from an adapter package such as @pqi-ffi@ or @pqi-native@.
+acquire :: Pqi.Adapter -> Config.Config -> IO Pool
+acquire adapter config = do
   connectionQueue <- newTQueueIO
   capVar <- newTVarIO (Config.size config)
   reuseVar <- newTVarIO =<< newTVarIO True
@@ -101,7 +106,7 @@ acquire config = do
     -- When the pool goes out of scope, stop the manager.
     killThread managerTid
 
-  return $ Pool (Config.size config) (Config.connectionSettingsProvider config) acqTimeoutMicros agingTimeoutNanos maxIdletimeNanos connectionQueue capVar reuseVar reaperRef (Config.observationHandler config) (Config.initSession config)
+  return $ Pool (Config.size config) adapter (Config.connectionSettingsProvider config) acqTimeoutMicros agingTimeoutNanos maxIdletimeNanos connectionQueue capVar reuseVar reaperRef (Config.observationHandler config) (Config.initSession config)
   where
     acqTimeoutMicros =
       div (fromIntegral (diffTimeToPicoseconds (Config.acquisitionTimeout config))) 1_000_000
@@ -167,7 +172,7 @@ use Pool {..} sess = do
       now <- getMonotonicTimeNSec
       id <- Uuid.nextRandom
       poolObserver (ConnectionObservation id ConnectingConnectionStatus)
-      Connection.acquire settings >>= \case
+      Connection.acquire poolAdapter settings >>= \case
         Left connErr -> do
           let connErrText = case connErr of
                 Errors.NetworkingConnectionError details -> Just details

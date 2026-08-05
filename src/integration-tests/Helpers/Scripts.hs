@@ -4,19 +4,21 @@ import Hasql.Connection.Settings qualified as Connection.Settings
 import Hasql.Pool qualified as Pool
 import Hasql.Pool.Config qualified as Config
 import Hasql.Session qualified as Session
+import Pqi qualified
 import Prelude
 import System.Random.Stateful qualified as Random
 import TextBuilder qualified
 
 -- |
 -- Parameters provided by the scope.
--- Host and port of a running isolated postgres server.
-type ScopeParams = (Text, Word16)
+-- Adapter, host and port of a running isolated postgres server.
+type ScopeParams = (Pqi.Adapter, Text, Word16)
 
 onTaggedPool :: Int -> DiffTime -> DiffTime -> DiffTime -> Text -> ScopeParams -> (Pool.Pool -> IO ()) -> IO ()
-onTaggedPool poolSize acqTimeout maxLifetime maxIdletime appName (host, port) =
+onTaggedPool poolSize acqTimeout maxLifetime maxIdletime appName (adapter, host, port) =
   bracket
     ( Pool.acquire
+        adapter
         ( Config.settings
             [ Config.size poolSize,
               Config.acquisitionTimeout acqTimeout,
@@ -37,15 +39,16 @@ onTaggedPool poolSize acqTimeout maxLifetime maxIdletime appName (host, port) =
     Pool.release
 
 onAutotaggedPool :: Int -> DiffTime -> DiffTime -> DiffTime -> ScopeParams -> (Text -> Pool.Pool -> IO ()) -> IO ()
-onAutotaggedPool poolSize acqTimeout maxLifetime maxIdletime (host, port) cont = do
+onAutotaggedPool poolSize acqTimeout maxLifetime maxIdletime scopeParams cont = do
   -- Generate app name
   appName <- generateName "hasql-pool-test-"
-  onTaggedPool poolSize acqTimeout maxLifetime maxIdletime appName (host, port) (cont appName)
+  onTaggedPool poolSize acqTimeout maxLifetime maxIdletime appName scopeParams (cont appName)
 
 onTaggedPoolWithInitSession :: Int -> DiffTime -> DiffTime -> DiffTime -> Session.Session () -> Text -> ScopeParams -> (Pool.Pool -> IO ()) -> IO ()
-onTaggedPoolWithInitSession poolSize acqTimeout maxLifetime maxIdletime initSession appName (host, port) =
+onTaggedPoolWithInitSession poolSize acqTimeout maxLifetime maxIdletime initSession appName (adapter, host, port) =
   bracket
     ( Pool.acquire
+        adapter
         ( Config.settings
             [ Config.size poolSize,
               Config.acquisitionTimeout acqTimeout,
@@ -67,9 +70,9 @@ onTaggedPoolWithInitSession poolSize acqTimeout maxLifetime maxIdletime initSess
     Pool.release
 
 onAutotaggedPoolWithInitSession :: Int -> DiffTime -> DiffTime -> DiffTime -> Session.Session () -> ScopeParams -> (Text -> Pool.Pool -> IO ()) -> IO ()
-onAutotaggedPoolWithInitSession poolSize acqTimeout maxLifetime maxIdletime initSession (host, port) cont = do
+onAutotaggedPoolWithInitSession poolSize acqTimeout maxLifetime maxIdletime initSession (adapter, host, port) cont = do
   appName <- generateName "hasql-pool-test-"
-  onTaggedPoolWithInitSession poolSize acqTimeout maxLifetime maxIdletime initSession appName (host, port) (cont appName)
+  onTaggedPoolWithInitSession poolSize acqTimeout maxLifetime maxIdletime initSession appName (adapter, host, port) (cont appName)
 
 onDefaultTaggedPool :: ScopeParams -> (Text -> Pool.Pool -> IO ()) -> IO ()
 onDefaultTaggedPool =

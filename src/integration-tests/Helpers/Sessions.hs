@@ -10,11 +10,11 @@ module Helpers.Sessions
 where
 
 import Data.Tuple.All
-import Database.PostgreSQL.LibPQ qualified as Pq
 import Hasql.Decoders qualified as Decoders
 import Hasql.Encoders qualified as Encoders
 import Hasql.Session qualified as Session
 import Hasql.Statement qualified as Statement
+import Pqi qualified
 import Prelude
 
 selectOne :: Session.Session Int64
@@ -34,7 +34,7 @@ badQuery =
 closeConn :: Session.Session ()
 closeConn =
   Session.onLibpqConnection \conn -> do
-    Pq.finish conn
+    Pqi.finish conn
     pure (Right (), conn)
 
 setSetting :: Text -> Text -> Session.Session ()
