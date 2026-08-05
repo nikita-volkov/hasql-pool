@@ -4,8 +4,3 @@ allow-newer:
   , *:base
   , *:template-haskell
   , *:ghc-prim
-
-source-repository-package
-  type: git
-  location: https://github.com/nikita-volkov/hasql
-  tag: 09af16bc9952ac251cd6d5592cfb0053364456e4
