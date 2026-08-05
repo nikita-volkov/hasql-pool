@@ -27,3 +27,18 @@ spec = do
       threadDelay 1_000_000 -- 1s
       res4 <- use pool $ Sessions.getSetting varName
       res4 `shouldBe` Right Nothing
+
+  it "Passively times out idle connections" \scopeParams -> do
+    -- 0.5s connection idle time, large lifetime, so only idleness can explain a passive close.
+    Scripts.onAutotaggedPool 3 10 1_800 1_800 scopeParams \_appName1 pool1 -> do
+      Scripts.onAutotaggedPool 3 10 1_800 0.5 scopeParams \appName2 pool2 -> do
+        res <- use pool2 $ Sessions.selectOne
+        res `shouldBe` Right 1
+        res2 <- use pool1 $ Sessions.countConnections appName2
+        res2 `shouldBe` Right 1
+        -- Give the background reaper (1s tick) a chance to passively evict
+        -- the now-idle connection, without ever calling `use pool2` again
+        -- (which would trigger the separate active idleness check).
+        threadDelay 1_500_000 -- 1.5s
+        res3 <- use pool1 $ Sessions.countConnections appName2
+        res3 `shouldBe` Right 0
