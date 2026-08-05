@@ -1,4 +1,8 @@
-# Upcoming
+# v1.4.2.3
+
+## Fixes
+
+- Fix publishing.
 
 # v1.4.2.2
 

@@ -15,4 +15,5 @@ jobs:
     uses: nikita-volkov/haskell-hackage-lib-github-actions-workflows/.github/workflows/ci.yaml@v5
     secrets: inherit
     with:
+      upload-docs: true
       test-options: --qc-max-success=1000
