@@ -1,3 +1,7 @@
+# v1.5.0.1
+
+- Allow newer pqi.
+
 # v1.5.0.0
 
 ## Breaking
