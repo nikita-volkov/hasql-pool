@@ -1,3 +1,9 @@
+# v1.5.0.0
+
+## Breaking
+
+- Migrate to `hasql-2`, replacing `postgresql-libpq` with the `pqi` connection-adapter interface. `acquire` now takes a `Pqi.Adapter` as its first argument; pick one from an adapter package such as `pqi-ffi` or `pqi-native`.
+
 # v1.4.2.3
 
 ## Fixes
