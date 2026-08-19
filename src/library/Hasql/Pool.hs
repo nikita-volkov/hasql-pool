@@ -139,12 +139,14 @@ release Pool {..} =
 -- | Use a connection from the pool to run a session and return the connection
 -- to the pool, when finished.
 --
--- Session failing with a 'Session.ClientError' gets interpreted as a loss of
--- connection. In such case the connection does not get returned to the pool
--- and a slot gets freed up for a new connection to be established the next
--- time one is needed. The error still gets returned from this function.
+-- A session error that leaves the connection unusable gets interpreted as a
+-- loss of connection. In such case the connection does not get returned to
+-- the pool and a slot gets freed up for a new connection to be established
+-- the next time one is needed. The error still gets returned from this
+-- function. The same happens when an asynchronous exception escapes the
+-- session: the connection is discarded and the exception is rethrown.
 --
--- __Warning:__ Due to the mechanism mentioned above you should avoid intercepting this error type from within sessions.
+-- __Warning:__ Due to the mechanism mentioned above you should avoid intercepting such errors from within sessions.
 use :: Pool -> Session.Session a -> IO (Either UsageError a)
 use Pool {..} sess = do
   timeout <- do
