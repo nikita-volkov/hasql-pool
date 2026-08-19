@@ -20,7 +20,11 @@ import Hasql.Pool.Prelude
 
 sessionRequiresConnectionDiscard :: Errors.SessionError -> Bool
 sessionRequiresConnectionDiscard = \case
-  Errors.MissingTypesSessionError {} -> True
+  -- Missing types leave no residue on the connection: the lookup is a live
+  -- catalog query, nothing gets negatively cached, and the connection state
+  -- comes back untouched. A fresh connection would ask the same catalog and
+  -- get the same answer, so discarding buys nothing but a reconnect.
+  Errors.MissingTypesSessionError {} -> False
   Errors.ScriptSessionError _ serverError -> isStaleServerError serverError
   Errors.StatementSessionError _ _ _ _ _ statementError -> statementRequiresConnectionDiscard statementError
 

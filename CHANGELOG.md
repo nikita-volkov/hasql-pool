@@ -8,6 +8,8 @@ Tracks the unreleased breaking changes on `hasql`'s `main`, ahead of hasql's own
 
 ## Fixes
 
+- A session that fails with `MissingTypesSessionError` no longer causes the connection to be discarded. The type lookup behind that error is a live catalog query which leaves no residue on the connection - nothing is negatively cached and the connection state comes back untouched - so a fresh connection would ask the same catalog and get the same answer. Referencing a type that does not exist used to cost a full teardown and reconnect per attempt.
+
 - A session interrupted by an asynchronous exception (a caller-side `timeout`, `race`, or `killThread`) is now discarded instead of returned to the pool. Hasql finishes the connection on that path itself, so re-queuing it as before handed the next caller a spent handle - a plausible root cause of "connection pointer is NULL" reports (#38).
 
   As a consequence, `initSession` no longer survives such an exception - it now only survives ordinary session errors (a bad query, a constraint violation), since those are the only case that leaves the old connection in play.
