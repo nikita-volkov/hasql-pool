@@ -92,6 +92,12 @@ observationHandler x =
 -- E.g., you can set the search path for all the sessions executed by the pool by executing the following:
 --
 -- > initSession (Session.sql "SET search_path TO schema1, schema2, public;")
+--
+-- The state it establishes survives an ordinary session error (a bad query, a
+-- constraint violation), since those leave the connection reusable. It does
+-- not survive an asynchronous exception escaping the session: any such
+-- exception spends the connection, so the next use runs 'initSession' again
+-- on a fresh one.
 initSession :: Session.Session () -> Setting
 initSession x =
   Setting (\config -> config {Config.initSession = x})

@@ -8,7 +8,7 @@ import Test.Hspec
 
 spec :: SpecWith Scripts.ScopeParams
 spec = do
-  it "Persists after exceptions thrown in session" \scopeParams -> do
+  it "Does not persist after exceptions thrown in session" \scopeParams -> do
     Scripts.onAutotaggedPool 1 10 60 60 scopeParams \_ pool -> do
       varName <- Scripts.generateVarname
 
@@ -22,9 +22,12 @@ spec = do
           liftIO do
             throwIO (userError "Intentional error for testing")
 
+      -- An asynchronous exception out of a session always spends the
+      -- connection, so the pool hands out a fresh one here and the
+      -- setting from before the exception is gone.
       res <- use pool do
         Sessions.getSetting varName
-      shouldBe res (Right (Just "1"))
+      shouldBe res (Right Nothing)
 
   it "Persists after bad query" \scopeParams -> do
     Scripts.onAutotaggedPool 1 10 60 60 scopeParams \_ pool -> do
