@@ -10,6 +10,16 @@ Tracks the unreleased breaking changes on `hasql`'s `main`, ahead of hasql's own
 
 - A session that fails with `MissingTypesSessionError` no longer causes the connection to be discarded. The type lookup behind that error is a live catalog query which leaves no residue on the connection - nothing is negatively cached and the connection state comes back untouched - so a fresh connection would ask the same catalog and get the same answer. Referencing a type that does not exist used to cost a full teardown and reconnect per attempt.
 
+- A session that fails with `UnexpectedColumnTypeStatementError` no longer causes the connection to be discarded. That rule was there for decoders built against an OID the catalog had since reassigned, but that case never reaches this error: the server notices the retired type first and raises `XX000`. What does reach it is the ordinary decoder mismatch - asking for `int4` where the column is `text` - which is a caller-side bug that a fresh connection reproduces identically.
+
+- Connections are now discarded on `26000` (`invalid_sql_statement_name`) and `42P05` (`duplicate_prepared_statement`). Both mean hasql's per-connection statement cache and the server disagree about what is prepared, and since nothing evicts from that cache, the disagreement is permanent - every subsequent execution of the affected statement fails for the rest of the connection's life.
+
+- Connections are now discarded on `25P02` (`in_failed_sql_transaction`), which means the connection is parked inside an aborted transaction where every statement fails until a rollback the pool has no opportunity to issue.
+
+- Connections are now discarded on class `08` (`connection_exception`, including `08P01` `protocol_violation`), on `40003` (`statement_completion_unknown`), and on class `57P` (`admin_shutdown`, `crash_shutdown`, `database_dropped`, the idle-session timeouts, and the rest). Note that `57014` (`query_canceled`) is deliberately excluded - a cancelled query leaves a perfectly healthy connection.
+
+  Codes deliberately left retaining, with the reasoning recorded in `Hasql.Pool.ConnectionDiscards`, include class `53` (`insufficient_resources` - a server-side shortage that a reconnect cannot cure, and where discarding would turn a resource crunch into a reconnect storm), `40001`/`40P01` (the canonical same-connection retry cases), `55P03`/`55006`, `58030`, and `XX001`/`XX002`.
+
 - A session interrupted by an asynchronous exception (a caller-side `timeout`, `race`, or `killThread`) is now discarded instead of returned to the pool. Hasql finishes the connection on that path itself, so re-queuing it as before handed the next caller a spent handle - a plausible root cause of "connection pointer is NULL" reports (#38).
 
   As a consequence, `initSession` no longer survives such an exception - it now only survives ordinary session errors (a bad query, a constraint violation), since those are the only case that leaves the old connection in play.
