@@ -10,6 +10,7 @@ module Hasql.Pool
   )
 where
 
+import Data.Text qualified as Text
 import Data.UUID.V4 qualified as Uuid
 import Hasql.Connection (Connection)
 import Hasql.Connection qualified as Connection
@@ -220,7 +221,13 @@ use Pool {..} sess = do
 
       case sessRes of
         Left exc -> do
-          returnConn
+          Connection.release (entryConnection entry)
+          atomically $ modifyTVar' poolCapacity succ
+          poolObserver
+            ( ConnectionObservation
+                (entryId entry)
+                (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (Just (Text.pack (displayException exc)))))
+            )
           throwIO exc
         Right (Left err) ->
           if ErrorsDestruction.requiresConnectionDiscard err
