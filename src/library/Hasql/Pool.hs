@@ -19,7 +19,7 @@ import Hasql.Errors qualified as Errors
 import Hasql.Pool.Config.Config qualified as Config
 import Hasql.Pool.Observation
 import Hasql.Pool.Prelude
-import Hasql.Pool.SessionErrorDestructors qualified as ErrorsDestruction
+import Hasql.Pool.ConnectionDiscards qualified as ConnectionDiscards
 import Hasql.Session qualified as Session
 import Pqi qualified
 
@@ -242,7 +242,7 @@ use Pool {..} sess = do
                 )
               return $ Left $ SessionUsageError err
             Errors.SessionUseError sessionErr ->
-              if ErrorsDestruction.sessionRequiresConnectionDiscard sessionErr
+              if ConnectionDiscards.sessionError sessionErr
                 then do
                   Connection.release (entryConnection entry)
                   atomically $ modifyTVar' poolCapacity succ

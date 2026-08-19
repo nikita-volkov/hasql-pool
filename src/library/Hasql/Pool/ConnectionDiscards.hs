@@ -13,27 +13,27 @@
 --
 -- 'Errors.ConnectionUseError' needs no classification here: it always means
 -- the connection is gone, and hasql has already finished it.
-module Hasql.Pool.SessionErrorDestructors where
+module Hasql.Pool.ConnectionDiscards where
 
 import Hasql.Errors qualified as Errors
 import Hasql.Pool.Prelude
 
-sessionRequiresConnectionDiscard :: Errors.SessionError -> Bool
-sessionRequiresConnectionDiscard = \case
+sessionError :: Errors.SessionError -> Bool
+sessionError = \case
   -- Missing types leave no residue on the connection: the lookup is a live
   -- catalog query, nothing gets negatively cached, and the connection state
   -- comes back untouched. A fresh connection would ask the same catalog and
   -- get the same answer, so discarding buys nothing but a reconnect.
   Errors.MissingTypesSessionError {} -> False
-  Errors.ScriptSessionError _ serverError -> isStaleServerError serverError
-  Errors.StatementSessionError _ _ _ _ _ statementError -> statementRequiresConnectionDiscard statementError
+  Errors.ScriptSessionError _ serverErr -> serverError serverErr
+  Errors.StatementSessionError _ _ _ _ _ statementErr -> statementError statementErr
 
-statementRequiresConnectionDiscard :: Errors.StatementError -> Bool
-statementRequiresConnectionDiscard = \case
-  Errors.ServerStatementError serverError -> isStaleServerError serverError
+statementError :: Errors.StatementError -> Bool
+statementError = \case
+  Errors.ServerStatementError serverErr -> serverError serverErr
   Errors.UnexpectedColumnTypeStatementError {} -> True
   _ -> False
 
-isStaleServerError :: Errors.ServerError -> Bool
-isStaleServerError (Errors.ServerError code _ _ _ _) =
+serverError :: Errors.ServerError -> Bool
+serverError (Errors.ServerError code _ _ _ _) =
   code == "0A000" || code == "XX000"

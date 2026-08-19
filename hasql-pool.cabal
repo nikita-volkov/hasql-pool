@@ -79,8 +79,8 @@ library
   other-modules:
     Hasql.Pool.Config.Config
     Hasql.Pool.Config.Setting
+    Hasql.Pool.ConnectionDiscards
     Hasql.Pool.Prelude
-    Hasql.Pool.SessionErrorDestructors
 
   build-depends:
     base >=4.11 && <5,
