@@ -178,10 +178,10 @@ use Pool {..} sess = do
       Connection.acquire poolAdapter settings >>= \case
         Left connErr -> do
           let connErrText = case connErr of
-                Errors.NetworkingConnectionError details -> Just details
-                Errors.AuthenticationConnectionError details -> Just details
-                Errors.CompatibilityConnectionError details -> Just details
-                Errors.OtherConnectionError details -> if details == "" then Nothing else Just details
+                Errors.NetworkingAcquireError details -> Just details
+                Errors.AuthenticationAcquireError details -> Just details
+                Errors.CompatibilityAcquireError details -> Just details
+                Errors.OtherAcquireError details -> if details == "" then Nothing else Just details
           poolObserver (ConnectionObservation id (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason connErrText)))
           atomically $ modifyTVar' poolCapacity succ
           return $ Left $ ConnectionUsageError connErr
@@ -190,12 +190,11 @@ use Pool {..} sess = do
             Left err -> do
               Connection.release connection
               atomically $ modifyTVar' poolCapacity succ
-              ErrorsDestruction.reset
-                ( \details -> do
-                    poolObserver (ConnectionObservation id (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (Just details))))
-                )
-                (poolObserver (ConnectionObservation id (TerminatedConnectionStatus (InitializationErrorTerminationReason err))))
-                err
+              case err of
+                Errors.ConnectionUseError details ->
+                  poolObserver (ConnectionObservation id (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (Just details))))
+                Errors.SessionUseError sessionErr ->
+                  poolObserver (ConnectionObservation id (TerminatedConnectionStatus (InitializationErrorTerminationReason sessionErr)))
               return $ Left $ SessionUsageError err
             Right () -> do
               poolObserver (ConnectionObservation id (ReadyForUseConnectionStatus EstablishedConnectionReadyForUseReason))
@@ -232,20 +231,31 @@ use Pool {..} sess = do
             )
           throwIO exc
         Right (Left err) ->
-          if ErrorsDestruction.requiresConnectionDiscard err
-            then do
+          case err of
+            Errors.ConnectionUseError details -> do
               Connection.release (entryConnection entry)
               atomically $ modifyTVar' poolCapacity succ
               poolObserver
                 ( ConnectionObservation
                     (entryId entry)
-                    (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (ErrorsDestruction.discardDetails err)))
+                    (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (Just details)))
                 )
               return $ Left $ SessionUsageError err
-            else do
-              returnConn
-              poolObserver (ConnectionObservation (entryId entry) (ReadyForUseConnectionStatus (SessionFailedConnectionReadyForUseReason err)))
-              return $ Left $ SessionUsageError err
+            Errors.SessionUseError sessionErr ->
+              if ErrorsDestruction.sessionRequiresConnectionDiscard sessionErr
+                then do
+                  Connection.release (entryConnection entry)
+                  atomically $ modifyTVar' poolCapacity succ
+                  poolObserver
+                    ( ConnectionObservation
+                        (entryId entry)
+                        (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (Just (Errors.toMessage sessionErr))))
+                    )
+                  return $ Left $ SessionUsageError err
+                else do
+                  returnConn
+                  poolObserver (ConnectionObservation (entryId entry) (ReadyForUseConnectionStatus (SessionFailedConnectionReadyForUseReason sessionErr)))
+                  return $ Left $ SessionUsageError err
         Right (Right res) -> do
           returnConn
           poolObserver (ConnectionObservation (entryId entry) (ReadyForUseConnectionStatus SessionSucceededConnectionReadyForUseReason))
@@ -264,9 +274,9 @@ use Pool {..} sess = do
 -- | Union over all errors that 'use' can result in.
 data UsageError
   = -- | Attempt to establish a connection failed.
-    ConnectionUsageError Errors.ConnectionError
+    ConnectionUsageError Errors.AcquireError
   | -- | Session execution failed.
-    SessionUsageError Errors.SessionError
+    SessionUsageError Errors.UseError
   | -- | Timeout acquiring a connection.
     AcquisitionTimeoutUsageError
   deriving (Show, Eq)

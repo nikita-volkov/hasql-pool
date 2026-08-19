@@ -1,30 +1,28 @@
+-- | Classification of 'Errors.SessionError' along the axis the pool cares
+-- about: whether the connection it came back on is still fit to reuse.
+--
+-- Hasql's own verdict - 'Errors.SessionUseError' - only promises the
+-- connection is still usable in the sense that 'Hasql.Connection.use' will
+-- run another session on it without throwing. It does not promise the
+-- statement that just failed can ever succeed on the same connection: a
+-- stale catalog cache or a plan built against a type that no longer exists
+-- leaves the connection alive but unable to replan that statement. Hasql
+-- declined to own this call - see the removal of
+-- 'Hasql.Errors.IsError.isTransient' - so the pool keeps making it itself,
+-- the same way it always did.
+--
+-- 'Errors.ConnectionUseError' needs no classification here: it always means
+-- the connection is gone, and hasql has already finished it.
 module Hasql.Pool.SessionErrorDestructors where
 
 import Hasql.Errors qualified as Errors
 import Hasql.Pool.Prelude
 
-reset :: (Text -> x) -> x -> Errors.SessionError -> x
-reset onReset onNoReset = \case
-  Errors.ConnectionSessionError details -> onReset details
-  _ -> onNoReset
-
-requiresConnectionDiscard :: Errors.SessionError -> Bool
-requiresConnectionDiscard = \case
-  Errors.ConnectionSessionError {} -> True
+sessionRequiresConnectionDiscard :: Errors.SessionError -> Bool
+sessionRequiresConnectionDiscard = \case
   Errors.MissingTypesSessionError {} -> True
   Errors.ScriptSessionError _ serverError -> isStaleServerError serverError
   Errors.StatementSessionError _ _ _ _ _ statementError -> statementRequiresConnectionDiscard statementError
-  -- Driver errors indicate that Hasql or the server left the connection in an
-  -- unexpected state. Hasql itself closes the libpq connection before
-  -- returning either a DriverSessionError or a ConnectionSessionError, so
-  -- neither must be reused by the pool.
-  Errors.DriverSessionError {} -> True
-
-discardDetails :: Errors.SessionError -> Maybe Text
-discardDetails err =
-  if requiresConnectionDiscard err
-    then Just $ Errors.toMessage err
-    else Nothing
 
 statementRequiresConnectionDiscard :: Errors.StatementError -> Bool
 statementRequiresConnectionDiscard = \case

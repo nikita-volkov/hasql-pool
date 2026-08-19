@@ -34,7 +34,7 @@ spec = do
       use pool (Sessions.setSetting settingName "present") `shouldReturn` Right ()
       result <- use pool driverError
       result `shouldSatisfy` \case
-        Left (SessionUsageError (Errors.DriverSessionError _)) -> True
+        Left (SessionUsageError (Errors.ConnectionUseError _)) -> True
         _ -> False
       use pool (Sessions.getSetting settingName) `shouldReturn` Right Nothing
 
@@ -130,4 +130,4 @@ roundtripEnum typeName value =
 driverError :: Session.Session ()
 driverError =
   Session.onLibpqConnection \connection ->
-    pure (Left (Errors.DriverSessionError "synthetic driver error"), connection)
+    pure (Left (Errors.ConnectionUseError "synthetic driver error"), connection)
