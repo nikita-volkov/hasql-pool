@@ -1,3 +1,15 @@
+# v1.3.0.6
+
+## Fixes
+
+- Fix pool capacity leak when `use` gets interrupted during connection
+  establishment, connection refresh, or an observation (#60)
+- Fix pool state corruption from throwing observation handlers; handlers
+  are now contained (see the updated `observationHandler` docs)
+- Fix background reaper dying permanently from a failed connection
+  release or observation
+- Fix `release` leaking flushed entries on failure
+
 # v1.3.0.5
 
 ## Fixes
