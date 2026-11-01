@@ -3,6 +3,7 @@ module Hasql.Pool.Config.Setting where
 import Hasql.Connection.Settings qualified as Connection.Settings
 import Hasql.Pool.Config.Config (Config)
 import Hasql.Pool.Config.Config qualified as Config
+import Hasql.Pool.Config.ReuseOrder (ReuseOrder (..))
 import Hasql.Pool.Observation (Observation)
 import Hasql.Pool.Prelude
 import Hasql.Session qualified as Session
@@ -95,3 +96,14 @@ observationHandler x =
 initSession :: Session.Session () -> Setting
 initSession x =
   Setting (\config -> config {Config.initSession = x})
+
+-- | Which of the idle connections a pool request gets.
+--
+-- With 'LIFO', the pool shrinks to the connections the load needs: the rest
+-- time out as idle (see 'idlenessTimeout'). With 'FIFO', steady load keeps
+-- every connection open.
+--
+-- 'FIFO' by default.
+reuseOrder :: ReuseOrder -> Setting
+reuseOrder x =
+  Setting (\config -> config {Config.reuseOrder = x})

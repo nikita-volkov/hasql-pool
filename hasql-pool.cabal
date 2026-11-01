@@ -78,6 +78,7 @@ library
 
   other-modules:
     Hasql.Pool.Config.Config
+    Hasql.Pool.Config.ReuseOrder
     Hasql.Pool.Config.Setting
     Hasql.Pool.Prelude
     Hasql.Pool.SessionErrorDestructors
