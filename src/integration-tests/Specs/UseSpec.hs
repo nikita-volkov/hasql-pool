@@ -89,6 +89,40 @@ spec = do
       res <- use pool Sessions.selectOne
       res `shouldSatisfy` isRight
 
+  it "Gives a freed connection to a pool request waiting for it rather than to a later one" \scopeParams ->
+    Scripts.onAutotaggedPool 1 10 1_800 1_800 scopeParams \_ pool -> do
+      order <- newIORef []
+      held <- newEmptyMVar
+      done <- newEmptyMVar
+      finished <- newEmptyMVar
+      let record name = use pool (liftIO (atomicModifyIORef' order \names -> (names <> [name], ())))
+      -- Requests a connection again as soon as it returns one, before the
+      -- waiting pool request gets to run.
+      _ <- forkIO do
+        _ <- use pool (liftIO (putMVar held () *> takeMVar done))
+        _ <- record "later"
+        putMVar finished ()
+      takeMVar held
+      _ <- forkIO (record "waiting" *> putMVar finished ())
+      -- Give the waiting pool request time to start waiting.
+      threadDelay 100_000
+      putMVar done ()
+      replicateM_ 2 (takeMVar finished)
+      readIORef order `shouldReturn` ["waiting", "later"]
+
+  it "Loses no capacity when a pool request waiting for a connection is interrupted" \scopeParams ->
+    Scripts.onAutotaggedPool 1 10 1_800 1_800 scopeParams \_ pool -> do
+      held <- newEmptyMVar
+      done <- newEmptyMVar
+      _ <- forkIO (void (use pool (liftIO (putMVar held () *> takeMVar done))))
+      takeMVar held
+      waiting <- forkIO (void (use pool Sessions.selectOne))
+      -- Give the pool request time to start waiting.
+      threadDelay 100_000
+      killThread waiting
+      putMVar done ()
+      use pool Sessions.selectOne `shouldReturn` Right 1
+
   it "Cached type errors cause eviction of connection" \scopeParams -> do
     typeName <- Text.replace "-" "_" <$> Scripts.generateName "cached_type_"
     Scripts.onAutotaggedPool 1 10 1_800 1_800 scopeParams \_ pool -> do
