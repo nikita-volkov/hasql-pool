@@ -108,6 +108,7 @@ test-suite test
     Specs.Config.InitSessionSpec
     Specs.Helpers.Sessions.CountConnectionsSpec
     Specs.Helpers.Sessions.GetSettingSpec
+    Specs.InterruptionSpec
     Specs.ReleaseSpec
     Specs.SpecHook
     Specs.UsageError.AcquisitionTimeoutSpec
