@@ -56,6 +56,16 @@ data Given
   = Given (TVar Bool) (Maybe Entry)
   | TimedOut
 
+-- | What a pool request holds after the enrollment transaction commits and
+-- has to give back on any failure.
+data Holding
+  = -- | An entry dequeued from the idle connections.
+    EntryHolding (TVar Bool) Entry
+  | -- | A capacity unit taken from the pool.
+    SlotHolding (TVar Bool)
+  | -- | A spot in the waiting queue.
+    WaitingHolding Waiter
+
 -- | Pool of connections to DB.
 data Pool = Pool
   { -- | Pool size.
@@ -93,6 +103,17 @@ data Pool = Pool
     poolInitSession :: Session.Session ()
   }
 
+-- | Contain the failures of the user-supplied observation handler. Synchronous
+-- exceptions from it are discarded, asynchronous ones are honored, so that
+-- neither affects the pool's state or the session result, and the pool's
+-- threads stay killable.
+containObserver :: (Observation -> IO ()) -> Observation -> IO ()
+containObserver observer observation =
+  catch @SomeException (observer observation) \exc ->
+    case fromException exc of
+      Just SomeAsyncException {} -> throwIO exc
+      Nothing -> return ()
+
 -- | Create a connection-pool.
 --
 -- No connections actually get established by this function. It is delegated
@@ -108,6 +129,7 @@ acquire adapter config = do
   reuseVar <- newTVarIO =<< newTVarIO True
   waiting <- newTQueueIO
   reaperRef <- newIORef ()
+  let observer = containObserver (Config.observationHandler config)
 
   managerTid <- forkIOWithUnmask $ \unmask -> unmask $ forever $ do
     threadDelay 1000000
@@ -118,14 +140,8 @@ acquire adapter config = do
           (idleEntries, liveEntries) = partition (entryIsIdle maxIdletimeNanos now) unagedEntries
       traverse_ (writeTQueue connectionQueue) liveEntries
       return $ do
-        forM_ agedEntries $ \entry -> do
-          Connection.release (entryConnection entry)
-          atomically $ freeSlot reuseVar waiting capVar
-          (Config.observationHandler config) (ConnectionObservation (entryId entry) (TerminatedConnectionStatus AgingConnectionTerminationReason))
-        forM_ idleEntries $ \entry -> do
-          Connection.release (entryConnection entry)
-          atomically $ freeSlot reuseVar waiting capVar
-          (Config.observationHandler config) (ConnectionObservation (entryId entry) (TerminatedConnectionStatus IdlenessConnectionTerminationReason))
+        forM_ agedEntries $ reap observer reuseVar waiting capVar AgingConnectionTerminationReason
+        forM_ idleEntries $ reap observer reuseVar waiting capVar IdlenessConnectionTerminationReason
 
   expirerTid <- forkIOWithUnmask $ \unmask -> unmask $ expire waiting
 
@@ -136,7 +152,7 @@ acquire adapter config = do
     killThread managerTid
     killThread expirerTid
 
-  return $ Pool (Config.size config) adapter (Config.connectionSettingsProvider config) acqTimeoutNanos agingTimeoutNanos maxIdletimeNanos connectionQueue (Config.reuseOrder config) capVar waiting reuseVar reaperRef (Config.observationHandler config) (Config.initSession config)
+  return $ Pool (Config.size config) adapter (Config.connectionSettingsProvider config) acqTimeoutNanos agingTimeoutNanos maxIdletimeNanos connectionQueue (Config.reuseOrder config) capVar waiting reuseVar reaperRef observer (Config.initSession config)
   where
     acqTimeoutNanos =
       div (fromIntegral (diffTimeToPicoseconds (Config.acquisitionTimeout config))) 1_000
@@ -160,10 +176,19 @@ release Pool {..} =
     newReuse <- newTVar True
     writeTVar poolReuseVar newReuse
     entries <- flushTQueue poolConnectionQueue
-    return $ forM_ entries $ \entry -> do
-      Connection.release (entryConnection entry)
-      atomically $ freeSlot poolReuseVar poolWaiting poolCapacity
-      poolObserver (ConnectionObservation (entryId entry) (TerminatedConnectionStatus ReleaseConnectionTerminationReason))
+    return $ forM_ entries $ \entry ->
+      mask \restore ->
+        catch @SomeException
+          ( do
+              restore $ Connection.release (entryConnection entry)
+              restore $ poolObserver (ConnectionObservation (entryId entry) (TerminatedConnectionStatus ReleaseConnectionTerminationReason))
+              atomically $ freeSlot poolReuseVar poolWaiting poolCapacity
+          )
+          \exc -> do
+            atomically $ freeSlot poolReuseVar poolWaiting poolCapacity
+            case fromException exc of
+              Just SomeAsyncException {} -> throwIO exc
+              Nothing -> return ()
 
 -- | Use a connection from the pool to run a session and return the connection
 -- to the pool, when finished.
@@ -178,41 +203,45 @@ release Pool {..} =
 -- When no connection is available, the pool requests wait for one in the
 -- order they came, and a later pool request doesn't take a connection while
 -- others wait.
-use :: Pool -> Session.Session a -> IO (Either UsageError a)
+use :: forall a. Pool -> Session.Session a -> IO (Either UsageError a)
 use Pool {..} sess = do
   now <- getMonotonicTimeNSec
-  let enqueue = do
-        waiter <- Waiter (now + poolAcquisitionTimeout) <$> newEmptyTMVar <*> newTVar False
-        writeTQueue poolWaiting waiter
-        return waiter
-  join . atomically $ do
-    reuseVar <- readTVar poolReuseVar
-    waited <- someoneWaiting poolWaiting
-    -- Behind the pool requests already waiting, which get what's freed first.
-    if waited
-      then enqueue <&> onWaiter
-      else
-        asum
-          [ readTQueue poolConnectionQueue <&> onConn reuseVar,
-            do
-              capVal <- readTVar poolCapacity
-              if capVal > 0
-                then do
-                  writeTVar poolCapacity $! pred capVal
-                  return $ onNewConn reuseVar
-                else retry,
-            enqueue <&> onWaiter
-          ]
+  mask \unmask -> do
+    holding <- atomically $ do
+      reuseVar <- readTVar poolReuseVar
+      waited <- someoneWaiting poolWaiting
+      -- Behind the pool requests already waiting, which get what's freed first.
+      if waited
+        then enqueue now <&> WaitingHolding
+        else
+          asum
+            [ readTQueue poolConnectionQueue <&> EntryHolding reuseVar,
+              do
+                capVal <- readTVar poolCapacity
+                if capVal > 0
+                  then do
+                    writeTVar poolCapacity $! pred capVal
+                    return $ SlotHolding reuseVar
+                  else retry,
+              enqueue now <&> WaitingHolding
+            ]
+    case holding of
+      EntryHolding reuseVar entry -> onEntry unmask reuseVar entry
+      SlotHolding reuseVar -> onSlot unmask reuseVar
+      WaitingHolding waiter -> do
+        given <- atomically (takeTMVar (waiterGiven waiter)) `onException` abandon waiter
+        case given of
+          TimedOut -> return $ Left AcquisitionTimeoutUsageError
+          Given reuseVar Nothing -> onSlot unmask reuseVar
+          Given reuseVar (Just entry) -> onEntry unmask reuseVar entry
   where
-    onWaiter waiter = do
-      given <- atomically (takeTMVar (waiterGiven waiter)) `onException` abandon waiter
-      case given of
-        TimedOut -> return $ Left AcquisitionTimeoutUsageError
-        Given reuseVar Nothing -> onNewConn reuseVar
-        Given reuseVar (Just entry) -> onConn reuseVar entry
+    enqueue :: Word64 -> STM Waiter
+    enqueue now = do
+      waiter <- Waiter (now + poolAcquisitionTimeout) <$> newEmptyTMVar <*> newTVar False
+      writeTQueue poolWaiting waiter
+      return waiter
 
-    -- A pool request interrupted while waiting gives back what it was given
-    -- meanwhile.
+    abandon :: Waiter -> IO ()
     abandon waiter = do
       given <- atomically $ do
         writeTVar (waiterGone waiter) True
@@ -222,58 +251,96 @@ use Pool {..} sess = do
         Given reuseVar (Just entry) -> returnConn reuseVar entry
         TimedOut -> return ()
 
+    returnSlot :: STM ()
     returnSlot = freeSlot poolReuseVar poolWaiting poolCapacity
 
-    onNewConn reuseVar = do
-      settings <- poolFetchConnectionSettings
+    -- | Holding one entry dequeued from the idle connections. If it is still
+    -- good, run the session on it; if it expired, replace it with a fresh
+    -- connection on the same slot. All the way, the holding is given back on
+    -- interruption.
+    onEntry :: (forall x. IO x -> IO x) -> TVar Bool -> Entry -> IO (Either UsageError a)
+    onEntry unmask reuseVar entry = do
+      now <- getMonotonicTimeNSec
+      if entryIsAged poolMaxLifetime now entry
+        then renewEntry unmask reuseVar entry AgingConnectionTerminationReason
+        else
+          if entryIsIdle poolMaxIdletime now entry
+            then renewEntry unmask reuseVar entry IdlenessConnectionTerminationReason
+            else onLiveConn unmask reuseVar entry {entryUseTimeNSec = now}
+
+    -- | Holding an expired entry. Release its connection and establish a
+    -- fresh one on the same slot. On interruption the slot gets given back:
+    -- the released connection cannot return to the pool.
+    renewEntry :: (forall x. IO x -> IO x) -> TVar Bool -> Entry -> ConnectionTerminationReason -> IO (Either UsageError a)
+    renewEntry unmask reuseVar entry reason = do
+      outcome <-
+        onException
+          ( do
+              Connection.release (entryConnection entry)
+              unmask $ poolObserver (ConnectionObservation (entryId entry) (TerminatedConnectionStatus reason))
+              establish unmask
+          )
+          (atomically returnSlot)
+      case outcome of
+        Left err -> return $ Left err
+        Right newEntry -> onLiveConn unmask reuseVar newEntry
+
+    -- | Holding one capacity unit. Establish a connection on it and run the
+    -- session. On interruption the slot gets given back.
+    onSlot :: (forall x. IO x -> IO x) -> TVar Bool -> IO (Either UsageError a)
+    onSlot unmask reuseVar = do
+      outcome <- onException (establish unmask) (atomically returnSlot)
+      case outcome of
+        Left err -> return $ Left err
+        Right entry -> onLiveConn unmask reuseVar entry
+
+    -- Run with one capacity unit held: establish the connection and run the
+    -- init session on it. On any failure the slot gets given back and the
+    -- error gets returned. On interruption the slot gets given back and the
+    -- exception gets rethrown.
+    establish :: (forall x. IO x -> IO x) -> IO (Either UsageError Entry)
+    establish unmask = do
+      settings <- unmask poolFetchConnectionSettings
       now <- getMonotonicTimeNSec
       id <- Uuid.nextRandom
-      poolObserver (ConnectionObservation id ConnectingConnectionStatus)
-      Connection.acquire poolAdapter settings >>= \case
+      unmask $ poolObserver (ConnectionObservation id ConnectingConnectionStatus)
+      unmask (Connection.acquire poolAdapter settings) >>= \case
         Left connErr -> do
           let connErrText = case connErr of
                 Errors.NetworkingConnectionError details -> Just details
                 Errors.AuthenticationConnectionError details -> Just details
                 Errors.CompatibilityConnectionError details -> Just details
                 Errors.OtherConnectionError details -> if details == "" then Nothing else Just details
-          poolObserver (ConnectionObservation id (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason connErrText)))
+          unmask $ poolObserver (ConnectionObservation id (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason connErrText)))
           atomically returnSlot
           return $ Left $ ConnectionUsageError connErr
-        Right connection -> do
-          Connection.use connection poolInitSession >>= \case
+        Right connection ->
+          unmask (Connection.use connection poolInitSession) >>= \case
             Left err -> do
               Connection.release connection
+              unmask $
+                ErrorsDestruction.reset
+                  (\details -> poolObserver (ConnectionObservation id (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (Just details)))))
+                  (poolObserver (ConnectionObservation id (TerminatedConnectionStatus (InitializationErrorTerminationReason err))))
+                  err
               atomically returnSlot
-              ErrorsDestruction.reset
-                ( \details -> do
-                    poolObserver (ConnectionObservation id (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (Just details))))
-                )
-                (poolObserver (ConnectionObservation id (TerminatedConnectionStatus (InitializationErrorTerminationReason err))))
-                err
               return $ Left $ SessionUsageError err
             Right () -> do
-              poolObserver (ConnectionObservation id (ReadyForUseConnectionStatus EstablishedConnectionReadyForUseReason))
-              onLiveConn reuseVar (Entry connection now now id)
+              unmask $ poolObserver (ConnectionObservation id (ReadyForUseConnectionStatus EstablishedConnectionReadyForUseReason))
+              return $ Right (Entry connection now now id)
 
-    onConn reuseVar entry = do
-      now <- getMonotonicTimeNSec
-      if entryIsAged poolMaxLifetime now entry
-        then do
-          Connection.release (entryConnection entry)
-          poolObserver (ConnectionObservation (entryId entry) (TerminatedConnectionStatus AgingConnectionTerminationReason))
-          onNewConn reuseVar
-        else
-          if entryIsIdle poolMaxIdletime now entry
-            then do
-              Connection.release (entryConnection entry)
-              poolObserver (ConnectionObservation (entryId entry) (TerminatedConnectionStatus IdlenessConnectionTerminationReason))
-              onNewConn reuseVar
-            else do
-              onLiveConn reuseVar entry {entryUseTimeNSec = now}
-
-    onLiveConn reuseVar entry = do
-      poolObserver (ConnectionObservation (entryId entry) InUseConnectionStatus)
-      sessRes <- try @SomeException (Connection.use (entryConnection entry) sess)
+    -- | Holding one entry ready for use. Run the session on it, return the
+    -- entry to the pool, and return the session result. Interrupted, the
+    -- session exception gets rethrown after the entry is back in the pool.
+    onLiveConn :: (forall x. IO x -> IO x) -> TVar Bool -> Entry -> IO (Either UsageError a)
+    onLiveConn unmask reuseVar entry = do
+      sessRes <-
+        onException
+          ( unmask $ do
+              poolObserver (ConnectionObservation (entryId entry) InUseConnectionStatus)
+              try @SomeException (Connection.use (entryConnection entry) sess)
+          )
+          (returnConn reuseVar entry)
 
       case sessRes of
         Left exc -> do
@@ -284,19 +351,20 @@ use Pool {..} sess = do
             then do
               Connection.release (entryConnection entry)
               atomically returnSlot
-              poolObserver
-                ( ConnectionObservation
-                    (entryId entry)
-                    (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (ErrorsDestruction.discardDetails err)))
-                )
+              unmask $
+                poolObserver
+                  ( ConnectionObservation
+                      (entryId entry)
+                      (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (ErrorsDestruction.discardDetails err)))
+                  )
               return $ Left $ SessionUsageError err
             else do
               returnConn reuseVar entry
-              poolObserver (ConnectionObservation (entryId entry) (ReadyForUseConnectionStatus (SessionFailedConnectionReadyForUseReason err)))
+              unmask $ poolObserver (ConnectionObservation (entryId entry) (ReadyForUseConnectionStatus (SessionFailedConnectionReadyForUseReason err)))
               return $ Left $ SessionUsageError err
         Right (Right res) -> do
           returnConn reuseVar entry
-          poolObserver (ConnectionObservation (entryId entry) (ReadyForUseConnectionStatus SessionSucceededConnectionReadyForUseReason))
+          unmask $ poolObserver (ConnectionObservation (entryId entry) (ReadyForUseConnectionStatus SessionSucceededConnectionReadyForUseReason))
           return $ Right res
 
     -- Back to the pool request waiting longest or to the idle connections,
@@ -385,6 +453,25 @@ drainWaiting waiting =
       gone <- readTVar (waiterGone waiter)
       unless gone $ void $ tryPutTMVar (waiterGiven waiter) TimedOut
       drainWaiting waiting
+
+-- | Terminate one expired connection on the reaper's tick: release it, report
+-- the termination, and give its slot back. The slot gets given back even when
+-- the release or the observation fails, so no capacity is lost, and a failing
+-- entry neither skips the other entries of the tick nor kills the reaper.
+reap :: (Observation -> IO ()) -> TVar (TVar Bool) -> TQueue Waiter -> TVar Int -> ConnectionTerminationReason -> Entry -> IO ()
+reap observer reuseVar waiting capVar reason entry =
+  mask \restore ->
+    catch @SomeException
+      ( do
+          restore $ Connection.release (entryConnection entry)
+          restore $ observer (ConnectionObservation (entryId entry) (TerminatedConnectionStatus reason))
+          atomically $ freeSlot reuseVar waiting capVar
+      )
+      \exc -> do
+        atomically $ freeSlot reuseVar waiting capVar
+        case fromException exc of
+          Just SomeAsyncException {} -> throwIO exc
+          Nothing -> return ()
 
 -- | Union over all errors that 'use' can result in.
 data UsageError
