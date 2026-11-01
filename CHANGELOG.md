@@ -1,3 +1,28 @@
+# v1.5.1.0
+
+## Fixes
+
+- Fix pool capacity leak when `use` gets interrupted during connection
+  establishment, connection refresh, or an observation (#60)
+- Fix pool state corruption from throwing observation handlers; handlers
+  are now contained (see the updated `observationHandler` docs)
+- Fix background reaper dying permanently from a failed connection
+  release or observation
+- Fix `release` leaking flushed entries on failure
+- Fix waiters waiting forever on a garbage-collected pool
+
+## Added
+
+- `reuseOrder` setting (#59): LIFO reuse lets the pool shrink to the
+  connections the load needs and keeps caches warm; FIFO stays the default
+- One background timer for acquisition timeouts instead of one
+  uncancelable timer per waiting request (#58)
+
+## Changed
+
+- Connections are handed to waiting requests in arrival order; a request
+  no longer takes a connection while others wait (#58)
+
 # v1.5.0.1
 
 - Allow newer pqi.
