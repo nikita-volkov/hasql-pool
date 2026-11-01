@@ -127,7 +127,9 @@ acquire adapter config = do
   expirerTid <- forkIOWithUnmask $ \unmask -> unmask $ expire waiting
 
   void . mkWeakIORef reaperRef $ do
-    -- When the pool goes out of scope, stop the manager and the expirer.
+    -- When the pool goes out of scope, resolve the pool requests still
+    -- waiting, and stop the manager and the expirer.
+    atomically $ drainWaiting waiting
     killThread managerTid
     killThread expirerTid
 
@@ -366,6 +368,17 @@ expire waiting = forever $ do
           unless gone $ putTMVar (waiterGiven waiter) TimedOut
           timeOut now
         _ -> return ()
+
+-- | Resolve the pool requests still waiting: with the pool gone, nothing will
+-- ever be given to them.
+drainWaiting :: TQueue Waiter -> STM ()
+drainWaiting waiting =
+  tryReadTQueue waiting >>= \case
+    Nothing -> return ()
+    Just waiter -> do
+      gone <- readTVar (waiterGone waiter)
+      unless gone $ void $ tryPutTMVar (waiterGiven waiter) TimedOut
+      drainWaiting waiting
 
 -- | Union over all errors that 'use' can result in.
 data UsageError
