@@ -205,7 +205,7 @@ use Pool {..} sess =
     returnSlot :: STM ()
     returnSlot = modifyTVar' poolCapacity succ
 
-    -- | Holding one entry dequeued from the idle connections. If it is still
+    -- \| Holding one entry dequeued from the idle connections. If it is still
     -- good, run the session on it; if it expired, replace it with a fresh
     -- connection on the same slot. All the way, the holding is given back on
     -- interruption.
@@ -219,7 +219,7 @@ use Pool {..} sess =
             then renewEntry unmask reuseVar entry IdlenessConnectionTerminationReason
             else onLiveConn unmask reuseVar entry {entryUseTimeNSec = now}
 
-    -- | Holding an expired entry. Release its connection and establish a
+    -- \| Holding an expired entry. Release its connection and establish a
     -- fresh one on the same slot. On interruption the slot gets given back:
     -- the released connection cannot return to the pool.
     renewEntry :: (forall x. IO x -> IO x) -> TVar Bool -> Entry -> ConnectionTerminationReason -> IO (Either UsageError a)
@@ -236,7 +236,7 @@ use Pool {..} sess =
         Left err -> return $ Left err
         Right newEntry -> onLiveConn unmask reuseVar newEntry
 
-    -- | Holding one capacity unit. Establish a connection on it and run the
+    -- \| Holding one capacity unit. Establish a connection on it and run the
     -- session. On interruption the slot gets given back.
     onSlot :: (forall x. IO x -> IO x) -> TVar Bool -> IO (Either UsageError a)
     onSlot unmask reuseVar = do
@@ -264,8 +264,8 @@ use Pool {..} sess =
           unmask (Session.run poolInitSession connection) >>= \case
             Left err -> do
               Connection.release connection
-              unmask $
-                ErrorsDestruction.reset
+              unmask
+                $ ErrorsDestruction.reset
                   ( \details ->
                       poolObserver (ConnectionObservation id (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (fmap (Text.decodeUtf8With Text.lenientDecode) details))))
                   )
@@ -277,7 +277,7 @@ use Pool {..} sess =
               unmask $ poolObserver (ConnectionObservation id (ReadyForUseConnectionStatus EstablishedConnectionReadyForUseReason))
               return $ Right (Entry connection now now id)
 
-    -- | Holding one entry ready for use. Run the session on it, return the
+    -- \| Holding one entry ready for use. Run the session on it, return the
     -- entry to the pool, and return the session result. Interrupted, the
     -- session exception gets rethrown after the entry is back in the pool.
     onLiveConn :: (forall x. IO x -> IO x) -> TVar Bool -> Entry -> IO (Either UsageError a)
