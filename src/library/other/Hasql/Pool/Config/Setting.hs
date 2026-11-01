@@ -72,6 +72,8 @@ dynamicConnectionSettings x =
 
 -- | Observation handler.
 --
+-- An observation handler must not throw. Synchronous exceptions from it are discarded; asynchronous exceptions are honored. Its failure never affects the session result or the pool's state.
+--
 -- Typically it's used for monitoring the state of the pool via metrics and logging.
 --
 -- If the provided action is not lightweight, it's recommended to use intermediate bufferring via channels like TBQueue to avoid occupying the pool management thread for too long.
