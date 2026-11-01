@@ -19,12 +19,6 @@ requiresConnectionDiscard = \case
   -- cleanup after an interruption fails, so it must not be reused by the pool.
   Errors.DriverSessionError {} -> True
 
-discardDetails :: Errors.SessionError -> Maybe Text
-discardDetails err =
-  if requiresConnectionDiscard err
-    then Just $ Errors.toMessage err
-    else Nothing
-
 statementRequiresConnectionDiscard :: Errors.StatementError -> Bool
 statementRequiresConnectionDiscard = \case
   Errors.ServerStatementError serverError -> isStaleServerError serverError
