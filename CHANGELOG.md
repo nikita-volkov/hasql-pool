@@ -1,3 +1,19 @@
+# v1.5.1.1
+
+## Fixes
+
+- After the server closes an idle pooled connection (a Postgres restart,
+  `pg_terminate_backend`, a server-side idle timeout), the first session on
+  it can fail with `UnexpectedRowCountStatementError` instead of a connection
+  error. Hasql maps the extra result that reports the closed connection to
+  that error, and a `singleRow` statement that returns two rows fails the
+  same way on a healthy connection, so the error alone cannot justify a
+  discard: the dead connection got returned to the pool and failed one more
+  session before it was discarded, so after a database restart every pooled
+  connection failed two sessions. Now, when a session fails with an error
+  that does not require a discard, `use` also checks the status that the
+  adapter reports for the connection and discards it when it is marked bad.
+
 # v1.5.1.0
 
 ## Fixes
