@@ -6,6 +6,7 @@ import Hasql.Decoders qualified as Decoders
 import Hasql.Encoders qualified as Encoders
 import Hasql.Errors qualified as Errors
 import Hasql.Pool
+import Hasql.Pool.Config qualified as Config
 import Hasql.Session qualified as Session
 import Hasql.Statement qualified as Statement
 import Helpers.Scripts qualified as Scripts
@@ -110,6 +111,52 @@ spec = do
       res <- use pool Sessions.selectOne
       res `shouldSatisfy` isRight
 
+  it "Gives a freed connection to a pool request waiting for it rather than to a later one" \scopeParams ->
+    Scripts.onAutotaggedPool 1 10 1_800 1_800 scopeParams \_ pool -> do
+      order <- newIORef []
+      held <- newEmptyMVar
+      done <- newEmptyMVar
+      finished <- newEmptyMVar
+      let record name = use pool (liftIO (atomicModifyIORef' order \names -> (names <> [name], ())))
+      -- Requests a connection again as soon as it returns one, before the
+      -- waiting pool request gets to run.
+      _ <- forkIO do
+        _ <- use pool (liftIO (putMVar held () *> takeMVar done))
+        _ <- record "later"
+        putMVar finished ()
+      takeMVar held
+      _ <- forkIO (record "waiting" *> putMVar finished ())
+      -- Give the waiting pool request time to start waiting.
+      threadDelay 100_000
+      putMVar done ()
+      replicateM_ 2 (takeMVar finished)
+      readIORef order `shouldReturn` ["waiting", "later"]
+
+  it "Loses no capacity when a pool request waiting for a connection is interrupted" \scopeParams ->
+    Scripts.onAutotaggedPool 1 10 1_800 1_800 scopeParams \_ pool -> do
+      held <- newEmptyMVar
+      done <- newEmptyMVar
+      _ <- forkIO (void (use pool (liftIO (putMVar held () *> takeMVar done))))
+      takeMVar held
+      waiting <- forkIO (void (use pool Sessions.selectOne))
+      -- Give the pool request time to start waiting.
+      threadDelay 100_000
+      killThread waiting
+      putMVar done ()
+      use pool Sessions.selectOne `shouldReturn` Right 1
+
+  it "Reuses the most recently returned connection with LIFO" \scopeParams ->
+    Scripts.onAutotaggedPoolWithReuseOrder 2 10 1_800 1_800 Config.LIFO scopeParams \_ pool -> do
+      (first, second) <- returnTwoConnections pool
+      first `shouldNotBe` second
+      use pool Sessions.backendPid `shouldReturn` Right second
+
+  it "Reuses the least recently returned connection by default" \scopeParams ->
+    Scripts.onAutotaggedPool 2 10 1_800 1_800 scopeParams \_ pool -> do
+      (first, second) <- returnTwoConnections pool
+      first `shouldNotBe` second
+      use pool Sessions.backendPid `shouldReturn` Right first
+
   it "Cached type errors cause eviction of connection" \scopeParams -> do
     typeName <- Text.replace "-" "_" <$> Scripts.generateName "cached_type_"
     Scripts.onAutotaggedPool 1 10 1_800 1_800 scopeParams \_ pool -> do
@@ -182,3 +229,24 @@ driverError :: Session.Session ()
 driverError =
   Session.onLibpqConnection \connection ->
     pure (Left (Errors.DriverSessionError "synthetic driver error"), connection)
+
+-- | Establish two connections, return the first before the second, and give
+-- their backend PIDs.
+returnTwoConnections :: Pool -> IO (Int32, Int32)
+returnTwoConnections pool = do
+  held <- newEmptyMVar
+  done <- newEmptyMVar
+  returned <- newEmptyMVar
+  _ <- forkIO do
+    res <- use pool (Sessions.backendPid <* liftIO (putMVar held () *> takeMVar done))
+    putMVar returned res
+  takeMVar held
+  res <- use pool do
+    second <- Sessions.backendPid
+    first <- liftIO do
+      putMVar done ()
+      takeMVar returned
+    pure (first, second)
+  case res of
+    Right (Right first, second) -> pure (first, second)
+    _ -> fail ("Unexpected result: " <> show res)

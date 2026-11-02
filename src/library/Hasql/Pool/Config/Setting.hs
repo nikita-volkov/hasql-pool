@@ -3,6 +3,7 @@ module Hasql.Pool.Config.Setting where
 import Hasql.Connection.Settings qualified as Connection.Settings
 import Hasql.Pool.Config.Config (Config)
 import Hasql.Pool.Config.Config qualified as Config
+import Hasql.Pool.Config.ReuseOrder (ReuseOrder (..))
 import Hasql.Pool.Observation (Observation)
 import Hasql.Pool.Prelude
 import Hasql.Session qualified as Session
@@ -74,6 +75,8 @@ dynamicConnectionSettings x =
 --
 -- Typically it's used for monitoring the state of the pool via metrics and logging.
 --
+-- An observation handler must not throw. Synchronous exceptions from it are discarded; asynchronous exceptions are honored. Its failure never affects the session result or the pool's state.
+--
 -- If the provided action is not lightweight, it's recommended to use intermediate bufferring via channels like TBQueue to avoid occupying the pool management thread for too long.
 -- E.g., if the action is @'atomically' . 'writeTBQueue' yourQueue@, then reading from it and processing can be done on a separate thread.
 --
@@ -95,3 +98,14 @@ observationHandler x =
 initSession :: Session.Session () -> Setting
 initSession x =
   Setting (\config -> config {Config.initSession = x})
+
+-- | Which of the idle connections a pool request gets.
+--
+-- With 'LIFO', the pool shrinks to the connections the load needs: the rest
+-- time out as idle (see 'idlenessTimeout'). With 'FIFO', steady load keeps
+-- every connection open.
+--
+-- 'FIFO' by default.
+reuseOrder :: ReuseOrder -> Setting
+reuseOrder x =
+  Setting (\config -> config {Config.reuseOrder = x})
