@@ -39,6 +39,27 @@ spec = do
         _ -> False
       use pool (Sessions.getSetting settingName) `shouldReturn` Right Nothing
 
+  -- After a server restart or @pg_terminate_backend@ the first statement on
+  -- the closed connection can fail with an 'Errors.UnexpectedRowCountStatementError'
+  -- instead of a 'Errors.ConnectionSessionError'. The pool must not hand the
+  -- connection out again.
+  it "Connections closed by the server cause eviction of connection" \scopeParams ->
+    Scripts.onAutotaggedPool 1 10 1_800 1_800 scopeParams \appName pool -> do
+      use pool Sessions.selectOne `shouldReturn` Right 1
+      Scripts.onAutotaggedPool 1 10 1_800 1_800 scopeParams \_ adminPool ->
+        use adminPool (terminateBackends appName) `shouldReturn` Right [True]
+      _ <- use pool Sessions.selectOne
+      use pool Sessions.selectOne `shouldReturn` Right 1
+
+  it "Unexpected row counts on a healthy connection don't cause eviction of connection" \scopeParams ->
+    Scripts.onAutotaggedPool 1 10 1_800 1_800 scopeParams \_ pool -> do
+      Right pid <- use pool backendPid
+      result <- use pool selectTwoRowsAsSingleRow
+      result `shouldSatisfy` \case
+        Left (SessionUsageError (Errors.StatementSessionError _ _ _ _ _ Errors.UnexpectedRowCountStatementError {})) -> True
+        _ -> False
+      use pool backendPid `shouldReturn` Right pid
+
   it "Connection gets returned to the pool after normal use" \scopeParams ->
     Scripts.onAutotaggedPool 1 10 1_800 1_800 scopeParams \_ pool -> do
       _ <- use pool $ Sessions.selectOne
@@ -173,6 +194,36 @@ roundtripEnum typeName value =
         ("select $1 :: " <> quoteIdentifier typeName)
         (Encoders.param (Encoders.nonNullable (Encoders.enum Nothing typeName id)))
         (Decoders.singleRow (Decoders.column (Decoders.nonNullable (Decoders.enum Nothing typeName Just))))
+
+terminateBackends :: Text -> Session.Session [Bool]
+terminateBackends appName =
+  Session.statement appName statement
+  where
+    statement =
+      Statement.unpreparable
+        "select pg_terminate_backend(pid, 10000) from pg_stat_activity where application_name = $1"
+        (Encoders.param (Encoders.nonNullable Encoders.text))
+        (Decoders.rowList (Decoders.column (Decoders.nonNullable Decoders.bool)))
+
+backendPid :: Session.Session Int32
+backendPid =
+  Session.statement () statement
+  where
+    statement =
+      Statement.preparable
+        "select pg_backend_pid()"
+        Encoders.noParams
+        (Decoders.singleRow (Decoders.column (Decoders.nonNullable Decoders.int4)))
+
+selectTwoRowsAsSingleRow :: Session.Session Int64
+selectTwoRowsAsSingleRow =
+  Session.statement () statement
+  where
+    statement =
+      Statement.preparable
+        "select * from (values (1 :: int8), (2 :: int8)) as t"
+        Encoders.noParams
+        (Decoders.singleRow (Decoders.column (Decoders.nonNullable Decoders.int8)))
 
 driverError :: Session.Session ()
 driverError =

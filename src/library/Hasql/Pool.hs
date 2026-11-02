@@ -193,7 +193,8 @@ release Pool {..} =
 -- | Use a connection from the pool to run a session and return the connection
 -- to the pool, when finished.
 --
--- Session failing with a 'Session.ClientError' gets interpreted as a loss of
+-- Session failing with a 'Errors.ConnectionSessionError' or leaving the
+-- connection in the 'Pqi.ConnectionBad' state gets interpreted as a loss of
 -- connection. In such case the connection does not get returned to the pool
 -- and a slot gets freed up for a new connection to be established the next
 -- time one is needed. The error still gets returned from this function.
@@ -346,8 +347,12 @@ use Pool {..} sess = do
         Left exc -> do
           returnConn reuseVar entry
           throwIO exc
-        Right (Left err) ->
-          if ErrorsDestruction.requiresConnectionDiscard err
+        Right (Left err) -> do
+          discard <-
+            if ErrorsDestruction.requiresConnectionDiscard err
+              then return True
+              else connectionIsLost (entryConnection entry)
+          if discard
             then do
               Connection.release (entryConnection entry)
               atomically returnSlot
@@ -355,7 +360,7 @@ use Pool {..} sess = do
                 $ poolObserver
                   ( ConnectionObservation
                       (entryId entry)
-                      (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (ErrorsDestruction.discardDetails err)))
+                      (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason (Just (Errors.toMessage err))))
                   )
               return $ Left $ SessionUsageError err
             else do
@@ -387,6 +392,26 @@ use Pool {..} sess = do
             Connection.release (entryConnection entry)
             atomically returnSlot
             poolObserver (ConnectionObservation (entryId entry) (TerminatedConnectionStatus ReleaseConnectionTerminationReason))
+
+-- | Whether the adapter has marked the connection as lost.
+--
+-- When the server closes an idle connection, e.g. on restart or with
+-- @pg_terminate_backend@, the next statement on it can fail with an error
+-- that doesn't say so: 'Errors.UnexpectedRowCountStatementError', for the
+-- extra result that reports the closed connection. A statement returning more
+-- rows than its decoder expects fails the same way on a healthy connection, so
+-- the error can't tell the two apart. The connection status can: the adapter
+-- has set it to 'Pqi.ConnectionBad' by then.
+connectionIsLost :: Connection -> IO Bool
+connectionIsLost connection =
+  Connection.use connection checkStatus <&> \case
+    Left _ -> True
+    Right lost -> lost
+  where
+    checkStatus =
+      Session.onLibpqConnection \pqConnection -> do
+        status <- Pqi.status pqConnection
+        return (Right (status == Pqi.ConnectionBad), pqConnection)
 
 -- | Whether a pool request is waiting. The ones that stopped waiting get
 -- dropped.
