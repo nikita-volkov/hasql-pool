@@ -1,10 +1,8 @@
-# Upcoming
-
-Tracks the unreleased breaking changes on `hasql`'s `main`, ahead of hasql's own next release.
+# v1.6.0.0
 
 ## Breaking
 
-- `UsageError`'s `ConnectionUsageError` now wraps `Errors.AcquireError` (was `Errors.ConnectionError`), and `SessionUsageError` now wraps `Errors.UseError` (was `Errors.SessionError`), matching hasql's merge of its connection-fatal error constructors into a single `UseError` type. Code pattern-matching into the wrapped error needs an extra step through `SessionUseError`/`ConnectionUseError` to reach what used to be there directly.
+- Migrate to `hasql-2.1`. `UsageError`'s `ConnectionUsageError` now wraps `Errors.AcquireError` (was `Errors.ConnectionError`), and `SessionUsageError` now wraps `Errors.UseError` (was `Errors.SessionError`), matching hasql's merge of its connection-fatal error constructors into a single `UseError` type. Code pattern-matching into the wrapped error needs an extra step through `SessionUseError`/`ConnectionUseError` to reach what used to be there directly.
 
 ## Fixes
 

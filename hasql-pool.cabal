@@ -1,6 +1,6 @@
 cabal-version: 3.0
 name: hasql-pool
-version: 1.5.0.1
+version: 1.6.0.0
 category: Hasql, Database, PostgreSQL
 synopsis: Pool of connections for Hasql
 homepage: https://github.com/nikita-volkov/hasql-pool
@@ -85,7 +85,7 @@ library
   build-depends:
     base >=4.11 && <5,
     bytestring >=0.10 && <0.14,
-    hasql ^>=2.0,
+    hasql ^>=2.1,
     pqi >=1.0 && <1.2,
     stm >=2.5 && <3,
     text >=1.2 && <3,
@@ -147,7 +147,7 @@ test-suite unit-tests
   build-depends:
     base >=4.11 && <5,
     bytestring >=0.10 && <0.14,
-    hasql ^>=2.0,
+    hasql ^>=2.1,
     hspec >=2.6 && <3,
     pqi >=1.0 && <1.2,
     stm >=2.5 && <3,

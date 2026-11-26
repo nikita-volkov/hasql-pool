@@ -170,6 +170,11 @@ use Pool {..} sess = do
             else retry
       ]
   where
+    optionalDetails details =
+      if details == ""
+        then Nothing
+        else Just details
+
     onNewConn reuseVar = do
       settings <- poolFetchConnectionSettings
       now <- getMonotonicTimeNSec
@@ -178,10 +183,11 @@ use Pool {..} sess = do
       Connection.acquire poolAdapter settings >>= \case
         Left connErr -> do
           let connErrText = case connErr of
-                Errors.NetworkingAcquireError details -> Just details
-                Errors.AuthenticationAcquireError details -> Just details
-                Errors.CompatibilityAcquireError details -> Just details
-                Errors.OtherAcquireError details -> if details == "" then Nothing else Just details
+                Errors.ConnectionAcquireError details -> optionalDetails details
+                Errors.ConnectionPasswordRequiredAcquireError details -> optionalDetails details
+                Errors.VersionTooOldAcquireError {} -> Just (Errors.toDetailedText connErr)
+                Errors.InitializationConnectionLossAcquireError details -> optionalDetails details
+                Errors.InitializationServerErrorAcquireError serverError -> Just (Errors.toDetailedText serverError)
           poolObserver (ConnectionObservation id (TerminatedConnectionStatus (NetworkErrorConnectionTerminationReason connErrText)))
           atomically $ modifyTVar' poolCapacity succ
           return $ Left $ ConnectionUsageError connErr
