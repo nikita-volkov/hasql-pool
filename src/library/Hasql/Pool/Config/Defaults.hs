@@ -1,6 +1,7 @@
 module Hasql.Pool.Config.Defaults where
 
 import Hasql.Connection.Settings qualified as Connection.Settings
+import Hasql.Pool.Config.ReuseOrder (ReuseOrder (..))
 import Hasql.Pool.Observation (Observation)
 import Hasql.Pool.Prelude
 import Hasql.Session qualified as Session
@@ -45,3 +46,8 @@ observationHandler = const (pure ())
 -- > pure ()
 initSession :: Session.Session ()
 initSession = pure ()
+
+-- |
+-- The idle connection returned longest ago first.
+reuseOrder :: ReuseOrder
+reuseOrder = FIFO

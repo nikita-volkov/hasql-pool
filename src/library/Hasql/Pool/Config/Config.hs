@@ -2,6 +2,7 @@ module Hasql.Pool.Config.Config where
 
 import Hasql.Connection.Settings qualified as Connection.Settings
 import Hasql.Pool.Config.Defaults qualified as Defaults
+import Hasql.Pool.Config.ReuseOrder (ReuseOrder)
 import Hasql.Pool.Observation (Observation)
 import Hasql.Pool.Prelude
 import Hasql.Session qualified as Session
@@ -14,7 +15,8 @@ data Config = Config
     idlenessTimeout :: DiffTime,
     connectionSettingsProvider :: IO Connection.Settings.Settings,
     observationHandler :: Observation -> IO (),
-    initSession :: Session.Session ()
+    initSession :: Session.Session (),
+    reuseOrder :: ReuseOrder
   }
 
 -- | Reasonable defaults, which can be built upon.
@@ -27,5 +29,6 @@ defaults =
       idlenessTimeout = Defaults.idlenessTimeout,
       connectionSettingsProvider = Defaults.dynamicConnectionSettings,
       observationHandler = Defaults.observationHandler,
-      initSession = Defaults.initSession
+      initSession = Defaults.initSession,
+      reuseOrder = Defaults.reuseOrder
     }

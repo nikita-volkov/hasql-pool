@@ -21,7 +21,46 @@
 - A session interrupted by an asynchronous exception (a caller-side `timeout`, `race`, or `killThread`) is now discarded instead of returned to the pool. Hasql finishes the connection on that path itself, so re-queuing it as before handed the next caller a spent handle - a plausible root cause of "connection pointer is NULL" reports (#38).
 
   As a consequence, `initSession` no longer survives such an exception - it now only survives ordinary session errors (a bad query, a constraint violation), since those are the only case that leaves the old connection in play.
+# v1.5.1.1
 
+## Fixes
+
+- After the server closes an idle pooled connection (a Postgres restart,
+  `pg_terminate_backend`, a server-side idle timeout), the first session on
+  it can fail with `UnexpectedRowCountStatementError` instead of a connection
+  error. Hasql maps the extra result that reports the closed connection to
+  that error, and a `singleRow` statement that returns two rows fails the
+  same way on a healthy connection, so the error alone cannot justify a
+  discard: the dead connection got returned to the pool and failed one more
+  session before it was discarded, so after a database restart every pooled
+  connection failed two sessions. Now, when a session fails with an error
+  that does not require a discard, `use` also checks the status that the
+  adapter reports for the connection and discards it when it is marked bad.
+
+# v1.5.1.0
+
+## Fixes
+
+- Fix pool capacity leak when `use` gets interrupted during connection
+  establishment, connection refresh, or an observation (#60)
+- Fix pool state corruption from throwing observation handlers; handlers
+  are now contained (see the updated `observationHandler` docs)
+- Fix background reaper dying permanently from a failed connection
+  release or observation
+- Fix `release` leaking flushed entries on failure
+- Fix waiters waiting forever on a garbage-collected pool
+
+## Added
+
+- `reuseOrder` setting (#59): LIFO reuse lets the pool shrink to the
+  connections the load needs and keeps caches warm; FIFO stays the default
+- One background timer for acquisition timeouts instead of one
+  uncancelable timer per waiting request (#58)
+
+## Changed
+
+- Connections are handed to waiting requests in arrival order; a request
+  no longer takes a connection while others wait (#58)
 # v1.5.0.1
 
 - Allow newer pqi.

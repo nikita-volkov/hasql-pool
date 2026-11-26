@@ -1,6 +1,6 @@
 module Specs.UsageError.AcquisitionTimeoutSpec where
 
-import Control.Concurrent.Async (race)
+import Control.Concurrent.Async (forConcurrently, race)
 import Hasql.Pool
 import Helpers.Scripts qualified as Scripts
 import Helpers.Sessions qualified as Sessions
@@ -31,3 +31,15 @@ spec = do
       res `shouldBe` Right (Left AcquisitionTimeoutUsageError)
       -- 0.5s
       diffUTCTime t1 t0 `shouldSatisfy` (< 0.5)
+
+  it "Gets produced for every waiting pool request, and the pool remains usable" \scopeParams ->
+    -- 100ms timeout
+    Scripts.onAutotaggedPool 1 0.1 1_800 1_800 scopeParams \_ pool -> do
+      held <- newEmptyMVar
+      done <- newEmptyMVar
+      _ <- forkIO (void (use pool (liftIO (putMVar held () *> takeMVar done))))
+      takeMVar held
+      results <- forConcurrently [1 .. 3 :: Int] \_ -> use pool Sessions.selectOne
+      results `shouldBe` replicate 3 (Left AcquisitionTimeoutUsageError)
+      putMVar done ()
+      use pool Sessions.selectOne `shouldReturn` Right 1

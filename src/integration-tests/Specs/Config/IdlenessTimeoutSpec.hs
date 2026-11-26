@@ -1,6 +1,7 @@
 module Specs.Config.IdlenessTimeoutSpec where
 
 import Hasql.Pool
+import Hasql.Pool.Config qualified as Config
 import Helpers.Scripts qualified as Scripts
 import Helpers.Sessions qualified as Sessions
 import Prelude
@@ -42,3 +43,20 @@ spec = do
         threadDelay 1_500_000 -- 1.5s
         res3 <- use pool1 $ Sessions.countConnections appName2
         res3 `shouldBe` Right 0
+
+  it "Times out the connections that aren't needed with LIFO" \scopeParams -> do
+    -- 0.5s connection idle time
+    Scripts.onAutotaggedPoolWithReuseOrder 2 10 1_800 0.5 Config.LIFO scopeParams \appName pool -> do
+      held <- newEmptyMVar
+      done <- newEmptyMVar
+      -- Establish two connections.
+      _ <- forkIO (void (use pool (liftIO (putMVar held () *> takeMVar done))))
+      takeMVar held
+      use pool Sessions.selectOne `shouldReturn` Right 1
+      putMVar done ()
+      -- Keep using the pool one pool request at a time, which needs only one
+      -- connection, for longer than the idle time and the reaper's 1s tick.
+      forM_ [1 :: Int .. 15] \_ -> do
+        use pool Sessions.selectOne `shouldReturn` Right 1
+        threadDelay 100_000 -- 0.1s
+      use pool (Sessions.countConnections appName) `shouldReturn` Right 1

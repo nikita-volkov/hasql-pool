@@ -11,10 +11,13 @@ module Hasql.Pool.Config
     Setting.dynamicConnectionSettings,
     Setting.observationHandler,
     Setting.initSession,
+    Setting.reuseOrder,
+    ReuseOrder.ReuseOrder (..),
   )
 where
 
 import Hasql.Pool.Config.Config qualified as Config
+import Hasql.Pool.Config.ReuseOrder qualified as ReuseOrder
 import Hasql.Pool.Config.Setting qualified as Setting
 import Hasql.Pool.Prelude
 

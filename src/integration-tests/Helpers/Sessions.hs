@@ -6,6 +6,7 @@ module Helpers.Sessions
     getSetting,
     countConnections,
     sleep,
+    backendPid,
   )
 where
 
@@ -71,3 +72,10 @@ sleep seconds =
   where
     statement = Statement.preparable "SELECT pg_sleep($1)" encoder Decoders.noResult
     encoder = Encoders.param (Encoders.nonNullable Encoders.float8)
+
+backendPid :: Session.Session Int32
+backendPid =
+  Session.statement () statement
+  where
+    statement = Statement.preparable "SELECT pg_backend_pid()" Encoders.noParams decoder
+    decoder = Decoders.singleRow (Decoders.column (Decoders.nonNullable Decoders.int4))

@@ -78,6 +78,7 @@ library
 
   other-modules:
     Hasql.Pool.Config.Config
+    Hasql.Pool.Config.ReuseOrder
     Hasql.Pool.Config.Setting
     Hasql.Pool.ConnectionDiscards
     Hasql.Pool.Prelude
@@ -108,6 +109,7 @@ test-suite test
     Specs.ConnectionDiscardsSpec
     Specs.Helpers.Sessions.CountConnectionsSpec
     Specs.Helpers.Sessions.GetSettingSpec
+    Specs.InterruptionSpec
     Specs.ReleaseSpec
     Specs.SpecHook
     Specs.UsageError.AcquisitionTimeoutSpec
